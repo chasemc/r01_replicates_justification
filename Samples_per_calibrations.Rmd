@@ -1,0 +1,38 @@
+---
+title: "Samples_per_calibrations"
+author: "Chase Clark"
+date: "November 24, 2018"
+output: html_document
+---
+
+```{r include=FALSE}
+library(dplyr)
+library(kableExtra)
+```
+
+How many bacterial strains will fit on a single 384-spot MALDI target, given x-calibrants and y-strain-replicates?
+
+```{r echo=FALSE}
+a <- sapply(1:50, function(x) 384- x  )
+b <- lapply(1:24, function(x) sapply(a, function(y) y/x  ))
+
+b <- floor(do.call(rbind.data.frame, b))
+
+colnames(b) <- paste(1:50, " Calibrants")
+rownames(b) <- paste(1:24, " Replicates")
+
+
+
+b %>%   
+  cbind(" " = rownames(b), .) %>% 
+  mutate_if(is.numeric, function(x) {
+    cell_spec(x, bold = T, 
+              color = spec_color(x, end = 0.9),
+              font_size = spec_font_size(x, begin = 12, end = 16)
+              )
+  }) %>% 
+  kable(escape = F, align = "c") %>% 
+    kable_styling(c("striped","bordered"), full_width = F) 
+
+
+```
