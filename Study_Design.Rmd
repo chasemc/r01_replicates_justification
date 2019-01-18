@@ -134,7 +134,7 @@ a %>%
 lets <- LETTERS[1:16]
 nums <- 1:24
 
-aa <- sapply(nums, function(x) paste0(lets, "-", x))
+aa <- sapply(nums, function(x) paste0(lets, x))
 aa <- matrix(aa, nrow = 16, ncol = 24)[-16, ]
 
 
@@ -319,19 +319,3 @@ as.table(sapply(unique(check)[grep("B004", unique(check))], function(x) length(g
 saveRDS(aa, "data/replicates_plate.rds")
 
 ```
-
-List the samples and locations
-```{r echo=FALSE}
- lets <- LETTERS[1:16]
-   nums <- 1:24
-   
-   b <- sapply(nums, function(x) paste0(lets, "-", x))
-   b <- matrix(b, nrow = 16, ncol = 24)[-16, ]
-   
-b <- lapply(sort(unique(aa[!is.na(aa)])), function(x)  b[which(aa %in% x)])   
-names(b) <- sort(unique(aa[!is.na(aa)]))
-b
-```
-
-
-
