@@ -1,7 +1,7 @@
 ---
 title: "Analysis"
 author: "Chase Clark"
-date: "January 2, 2019"
+date: "January 19, 2019"
 output: html_document
 ---
 
@@ -9,22 +9,96 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+The IDBac version used to create the SQL was:  https://github.com/chasemc/IDBacApp/commit/9c7609ade28155e165c6e4319f12b55f6108b216
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+This can be installed via: 
+devtools::install_github("chasemc/IDBacApp@9c7609a")
 
-```{r cars}
-summary(cars)
+```{r}
+library(RSQLite)
+library(DBI)
+library(dplyr)
+library(magrittr)
+library(MALDIquant)
 ```
 
-## Including Plots
+Connect to SQLite, show available tables
+```{r}
+sqliteFile <- "data/r01_replicates.sqlite"
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+con <- DBI::dbConnect(drv = RSQLite::SQLite(),
+                      sqliteFile)
+DBI::dbListTables(con)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+All raw and processed spectra, peaklists are contained in the table "IndividualSpectra" 
+```{r}
+spectraTable <- dplyr::tbl(con, "IndividualSpectra")
+```
+
+
+```{r}
+sampleIDs <- spectraTable %>% pull(Strain_ID)
+sampleIDs <- sampleIDs[sampleIDs != "BTS"]
+sampleIDs <- sampleIDs[sampleIDs != "NA"]
+```
+
+There was one sample that wound up not having 8-technical replicates, so every bio rep needs to have 1 tech rep renadomly removed:
+```{r}
+a<-(sapply(sampleIDs, function(x) strsplit(x, "_")[[1]][[1]]))
+b<-(sapply(sampleIDs, function(x) strsplit(x, "_")[[1]][[3]]))
+sort(table(paste0(a, "_", b)))
+```
+
+
+Get the spectra shas, and group by biological replicate
+```{r}
+spectraTable %>% 
+  filter(!is.na(proteinPeaks)) %>% 
+  select(spectrumSHA, Strain_ID) %>% 
+  filter(!Strain_ID %in% c("NA", "BTS")) %>% 
+  collect %>% 
+  return(.) -> shas
+
+shas %>% 
+  mutate(Strain_ID, BioRep = paste0(sapply(strsplit(Strain_ID, "_"), "[", 1),
+                                    "_",
+                                    sapply(strsplit(Strain_ID, "_"), "[", 3))) %>%  
+  return(.) -> shas
+
+```
+
+```{r}
+grouped <- split(shas, shas$BioRep)
+
+```
+
+Get Protein Peaks
+```{r}
+proteinPeaks <- lapply(grouped, function(x){
+  
+  spectraTable %>% 
+    filter(spectrumSHA %in% x$spectrumSHA) %>% 
+    select(proteinPeaks) %>% collect 
+  
+})
+```
+
+Decompress, unserialize
+```{r}
+proteinPeaks <- lapply(proteinPeaks, function(x){
+  
+  unlist(lapply(x[[1]], function(y){
+  unserialize(memDecompress(y, type= "gzip"))
+  }))
+})
+```
+
+
+
+
+
+
+
