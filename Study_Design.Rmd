@@ -225,59 +225,6 @@ aa %>%
 
 
 
-```{r include=FALSE}
-# Here we make the same map as above but only label the MALDI spots by strain label and biological replicate number.
-bio <- lapply(zz, 
-              function(x){
-                x <- strsplit(x,"_")
-                sapply(x, function(x) x[[1]])
-                }
-              )
-
-rep <- lapply(zz, 
-              function(x){
-                x <- strsplit(x,"_")
-                sapply(x, function(x) x[[3]])
-                }
-              )
-
-
-
-biorep <- lapply(1:24, function(x) paste0(bio[[x]], "_", rep[[x]]))
-
-```
-
-```{r include=FALSE}
-lets <- LETTERS[1:16]
-nums <- 1:24
-
-aa <- sapply(nums, function(x) paste0(lets, "-", x))
-aa <- matrix(aa, nrow = 16, ncol = 24)[-16, ]
-
-# Get index on plate for each 'individualCalibrations'
-qq <- lapply(individualCalibrations, 
-             function(x){
-               which(aa %in% x)                         
-               }
-             )[seq_along(biorep)]
-
-
-aa <- matrix(NA, nrow = 16, ncol = 24)[-16, ]
-
-
-for(i in seq_along(biorep)){
-  aa[qq[[i]]] <- unlist(biorep[[i]])
-}
-
-aa <- rbind(aa, rep(NA, ncol(aa)))
-rownames(aa) <- LETTERS[1:16]
-colnames(aa) <- 1:24
-aa %>% 
-  kable(escape = F, align = "c") %>% 
-    kable_styling(c("striped","bordered"), full_width = F) 
-```
-
-
 
 ```{r eval=FALSE, include=FALSE}
 # Check the number of replicates present on the MALDI target plate:
