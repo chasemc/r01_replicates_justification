@@ -2,11 +2,16 @@
 title: "Analysis"
 author: "Chase Clark"
 date: "January 19, 2019"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = F)
 ```
 
 
@@ -15,13 +20,14 @@ The IDBac version used to create the SQL was:  https://github.com/chasemc/IDBacA
 This can be installed via: 
 devtools::install_github("chasemc/IDBacApp@9c7609a")
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(RSQLite)
 library(DBI)
 library(dplyr)
 library(magrittr)
 library(MALDIquant)
 ```
+
 
 Connect to SQLite, show available tables
 ```{r}
@@ -45,34 +51,41 @@ sampleIDs <- sampleIDs[sampleIDs != "BTS"]
 sampleIDs <- sampleIDs[sampleIDs != "NA"]
 ```
 
-There was one sample that wound up not having 8-technical replicates, so every bio rep needs to have 1 tech rep renadomly removed:
+There was one sample that wound up not having 8-technical replicates, so every bio rep will have 1 technical replicate randomly removed:
 ```{r}
 a <- sapply(strsplit(sampleIDs, "_"), "[", 1)
 b <- sapply(strsplit(sampleIDs, "_"), "[", 3)
 sort(table(paste0(a, "_", b)))
 ```
 
-Whole-spectrum comparisons within Strains
+# Whole-spectrum comparisons:
+
+## Biological + Technical
+1: Summarise whole-spectrum comparisons within strains (biological replicates + technical replicates)
 ```{r}
 spectraTable %>% 
   filter(!is.na(proteinSpectrum)) %>% 
   select(Strain_ID, proteinSpectrum) %>% 
   collect %>% 
-  return(.) -> proteinSpectra
+  return(.) -> proteinSpectraTable
 
-proteinSpectra %>% 
+proteinSpectraTable %>% 
   mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
   filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
-  return(.) -> shas
-
-ids <- shas$Strain
-
-proteinSpectra <- unlist(lapply(shas$proteinSpectrum, function(y){
-   unserialize(memDecompress(y, type= "gzip"))
-}))
+  return(.) -> proteinSpectraTable
 
 
-proteinSpectra <- lapply(proteinSpectra, function(x){
+z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+proteinSpectraTable %>% 
+  mutate(proteinSpectrum = z ) -> proteinSpectraTable
+
+
+
+
+proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$proteinSpectrum, function(x){
   
   x@intensity <- x@intensity / max(x@intensity)
   x
@@ -80,10 +93,57 @@ proteinSpectra <- lapply(proteinSpectra, function(x){
 
 
 
-proteinSpectra <- split(proteinSpectra, ids)
+```
+
+
+- Streptomyces, overall, had a greater variability than the Enterococcus strain in whole-spectra; and A019 had the most.
+
+```{r}
+
+
+protein <- split(proteinSpectraTable$proteinSpectrum, proteinSpectraTable$Strain)
 
 w<-Vectorize(MALDIquant::intensity, "object")
-compared <- lapply(proteinSpectra, 
+
+compared <- lapply(protein, 
+                   function(x){
+                     
+                   coop::cosine(w(x))
+                     
+  
+})
+
+par(mfrow = c(2,2))
+
+for(i in seq_along(compared)){
+
+plot(compared[[i]], 
+     xlim = c(0.4, 1),
+     ylim = c(0.4, 1), 
+     xlab = "Cosine",
+     ylab = "Cosine",
+     main = names(compared)[[i]])
+
+}
+```
+
+## Biological 
+
+2: Compare technical replicates within each biological replicate
+
+- Cosine similarities of technical replicates are very similar
+
+
+Of note: A019_1, A046_2, 
+```{r}
+
+
+protein <- split(proteinSpectraTable$proteinSpectrum, 
+                 paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio))
+
+w<-Vectorize(MALDIquant::intensity, "object")
+
+compared <- lapply(protein, 
                    function(x){
                      
                    coop::cosine(w(x))
@@ -92,36 +152,183 @@ compared <- lapply(proteinSpectra,
 })
 
 
-```
-
-
-Streptomyces, overall, had a greater variability than the Enterococcus strain in whole-spectra; and A019 had the most.
-```{r}
-par(mfrow = c(2,2))
+par(mfrow = c(3,4))
 
 for(i in seq_along(compared)){
-
-plot(compared[[i]], 
-     xlim = c(0, 1),
-     ylim = c(0, 1), 
-     xlab = "Cosine",
-     ylab = "Cosine",
-     main = names(compared)[[i]])
-
+    
+    plot(compared[[i]], 
+         xlim = c(0.5, 1),
+         ylim = c(0.5, 1), 
+         xlab = "Cosine",
+         ylab = "Cosine",
+         main = names(compared)[[i]])
+    
 }
 ```
 
 
+```{r eval=FALSE, include=FALSE}
+for(i in seq_along(protein)){
+  png(filename = paste0("images/techReps/", names(protein)[[i]], ".png"),
+      width = 900, 
+      height = 600,
+      units = "px")
+  
+  par(mfrow = c(2,2))
+  
+  for(x in seq_along(protein[[i]])){
+    plot(protein[[i]][[x]], main = protein[[i]][[x]]@metaData$Strain)
+  }
+  dev.off()
+  
+} 
+```
+
+```{r eval=FALSE, include=FALSE}
+spectraTable %>% 
+  filter(!is.na(smallMoleculeSpectrum)) %>% 
+  select(Strain_ID, smallMoleculeSpectrum) %>% 
+  collect %>% 
+  return(.) -> proteinSpectraTable
+
+proteinSpectraTable %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
+  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
+  return(.) -> proteinSpectraTable
+
+
+z<- unlist(lapply(proteinSpectraTable$smallMoleculeSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+proteinSpectraTable %>% 
+  mutate(smallMoleculeSpectrum = z ) -> proteinSpectraTable
 
 
 
 
+proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$smallMoleculeSpectrum, function(x){
+  
+  x@intensity <- x@intensity / max(x@intensity)
+  x
+})
+
+
+protein <- split(proteinSpectraTable$proteinSpectrum, 
+                 paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio))
+for(i in seq_along(protein)){
+  png(filename = paste0("images/techReps/small/", names(protein)[[i]], ".png"),
+      width = 900, 
+      height = 600,
+      units = "px")
+  
+  par(mfrow = c(2,2))
+  
+  for(x in seq_along(protein[[i]])){
+    plot(protein[[i]][[x]], main = protein[[i]][[x]]@metaData$Strain)
+  }
+  dev.off()
+  
+} 
+```
+
+
+----
 
 
 
-
-Get the spectra shas, and group by biological replicate
 ```{r}
+
+spectraTable %>% 
+  filter(!is.na(proteinSpectrum)) %>% 
+  select(Strain_ID, proteinSpectrum) %>% 
+  collect %>% 
+  return(.) -> proteinSpectraTable
+
+proteinSpectraTable %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
+  filter(Strain %in% c("A019")) %>%
+  filter(Bio == 1) %>%
+  return(.) -> proteinSpectraTable
+
+
+z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+```
+
+
+A019_Bio_1_tech_2 is a bad spectrum
+```{r}
+par(mfrow = c(2,2))
+for(i in seq_along(z)){
+plot(z[[i]], main = z[[i]]@metaData$Strain)
+}
+```
+
+----
+
+
+```{r}
+
+spectraTable %>% 
+  filter(!is.na(proteinSpectrum)) %>% 
+  select(Strain_ID, proteinSpectrum) %>% 
+  collect %>% 
+  return(.) -> proteinSpectraTable
+
+proteinSpectraTable %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
+  filter(Strain %in% c("A046")) %>%
+  filter(Bio == 2) %>%
+  return(.) -> proteinSpectraTable
+
+
+z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+
+```
+
+
+A046_Bio_2_tech_1 is a bad spectrum
+```{r}
+par(mfrow = c(2,2))
+for(i in seq_along(z)){
+plot(z[[i]], main = z[[i]]@metaData$Strain)
+}
+
+```
+
+
+
+
+
+
+----
+
+
+
+----
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#Get the spectra shas, and group by biological replicate
 spectraTable %>% 
   filter(!is.na(proteinPeaks)) %>% 
   select(spectrumSHA, Strain_ID) %>% 
@@ -137,14 +344,14 @@ shas %>%
 
 ```
 
-split and then renadomly take three tech reps for each bio rep
 ```{r}
+#split and then renadomly take three tech reps for each bio rep
 grouped <- split(shas, shas$BioRep)
 grouped <- lapply(grouped, function(x) x[sample(1:nrow(x), 3), ] )
 ```
 
-Get Protein Peaks
 ```{r}
+#Get Protein Peaks
 proteinPeaks <- lapply(grouped, function(x){
   
   spectraTable %>% 
@@ -154,8 +361,8 @@ proteinPeaks <- lapply(grouped, function(x){
 })
 ```
 
-Decompress, unserialize
 ```{r}
+#Decompress, unserialize
 proteinPeaks <- lapply(proteinPeaks, function(x){
   
   unlist(lapply(x[[1]], function(y){
@@ -173,8 +380,9 @@ proteinPeaks <- lapply(proteinPeaks, function(x){
 strains <- sapply(strsplit(names(proteinPeaks), "_"),"[",1)
 grouped_by_strain <- split(proteinPeaks, strains)
 ```
+# Peaks Variability
 
-### Technical variability.
+## Technical variability.
 Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
 
 ```{r echo=FALSE}
@@ -225,7 +433,7 @@ boxplot(zz[[i]], ylim= c(0,1),
 
 
 
-### Biological variability.
+## Biological variability.
 Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
 
 ```{r echo=FALSE}

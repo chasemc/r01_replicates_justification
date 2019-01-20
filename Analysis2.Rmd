@@ -1,0 +1,251 @@
+---
+title: "Analysis22"
+author: "Chase Clark"
+date: "January 19, 2019"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+
+The IDBac version used to create the SQL was:  https://github.com/chasemc/IDBacApp/commit/9c7609ade28155e165c6e4319f12b55f6108b216
+
+This can be installed via: 
+devtools::install_github("chasemc/IDBacApp@9c7609a")
+
+```{r message=FALSE, warning=FALSE}
+library(RSQLite)
+library(DBI)
+library(dplyr)
+library(magrittr)
+library(MALDIquant)
+```
+
+
+Connect to SQLite, show available tables
+```{r}
+sqliteFile <- "data/r01_replicates.sqlite"
+
+
+con <- DBI::dbConnect(drv = RSQLite::SQLite(),
+                      sqliteFile)
+DBI::dbListTables(con)
+```
+
+All raw and processed spectra, peaklists are contained in the table "IndividualSpectra" 
+```{r}
+spectraTable <- dplyr::tbl(con, "IndividualSpectra")
+```
+
+
+
+
+```{r}
+spectraTable %>% 
+  filter(!is.na(proteinPeaks)) %>% 
+  select(Strain_ID, proteinPeaks) %>% 
+  collect %>% 
+  return(.) -> proteinPeaksTable
+
+proteinPeaksTable %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
+  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
+  return(.) -> proteinPeaksTable
+
+
+z<- unlist(lapply(proteinPeaksTable$proteinPeaks, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+proteinPeaksTable %>% 
+  mutate(proteinPeaks = z ) -> proteinPeaksTable
+remove(z)
+
+
+
+proteinPeaksTable$proteinPeaks <- lapply(proteinPeaksTable$proteinPeaks, function(x){
+  
+  x@intensity <- x@intensity / max(x@intensity)
+  x
+})
+
+
+
+```
+
+
+
+```{r echo=FALSE}
+
+proteinPeaksTable$proteinPeaks %>% 
+  MALDIquant::trim(., c(3000, 15000)) -> proteinPeaks
+
+
+
+biologicalReplicates <- paste0(proteinPeaksTable$Strain, "_", proteinPeaksTable$Bio)
+
+groupedByBio <- split(proteinPeaks, biologicalReplicates)
+
+
+some <- lapply(groupedByBio, function(x){
+  
+  sample(x=x, 1)
+})
+
+
+ss <- split(some, sapply(strsplit(names(groupedByBio), "_"),"[",1))
+
+
+sw <- lapply(ss, function(x){
+  x <- unlist(x)
+  z <- determineWarpingFunctions(x, tolerance=0.002,
+                          method=c("lowess"),
+                          allowNoMatches=FALSE,
+                          plot=FALSE, plotInteractive=TRUE)
+  x <-warpMassPeaks(x,z)
+  x <- MALDIquant::binPeaks(unlist(x))
+  x <- MALDIquant::filterPeaks(x, minFrequency = .5)
+  MALDIquant::mergeMassPeaks(x)
+  
+})
+
+ii <- MALDIquant::binPeaks(sw)
+
+ii <- MALDIquant::intensityMatrix(ii)
+
+ii[is.na(ii)] <- 0
+
+
+coop::tcosine(ii)
+
+```
+
+
+
+
+## Biological variability.
+Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
+
+```{r echo=FALSE}
+
+
+
+
+q3 <- lapply(grouped_by_strain, function(a){
+q <- lapply(1:100, function(xx){
+  
+  a1 <-  lapply(a, function(x) sample(x, 1))
+  
+  a1 %>% 
+    unlist %>%
+    MALDIquant::trim(., c(3000, 15000)) %>% 
+    MALDIquant::binPeaks(.) %>% 
+    MALDIquant::intensityMatrix() -> a2
+  
+  a2[is.na(a2)] <- 0
+  a3 <- coop::tcosine(a2)
+  
+})
+return(do.call(rbind, q))
+})
+
+
+par(mfrow=c(2,2))
+
+for(i in seq_along(q3)){
+boxplot(q3[[i]], ylim= c(0,1), 
+        main = names(q3)[[i]],
+        xlab = "Biological Replicates",
+        ylab = "Cosine Score")
+}
+
+
+         
+  
+```
+
+
+```{r}
+
+a <- grouped_by_strain[[2]]
+# randomly sample one technical replicate within each biological replicate
+a1 <-  lapply(a, function(x) sample(x, 1))
+
+
+b <- grouped_by_strain[[3]]
+# randomly sample one technical replicate within each biological replicate
+b1 <-  lapply(b, function(x) sample(x, 1))
+
+
+binned <- MALDIquant::binPeaks(unlist(list(a1,b1), recursive = T))
+
+binned <- intensityMatrix(binned)
+
+binned[is.na(binned)] <- 0
+
+binned <- coop::tcosine(binned)
+
+d <- binned
+d[upper.tri(d, diag = T)] <- NA
+
+a1 <- as.vector(d[1:12, 1:12])
+a2 <- as.vector(d[13:24, 1:12])
+a3 <- as.vector(d[13:24, 13:24])
+
+a1 <- a1[!is.na(a1)]
+a2 <- a2[!is.na(a2)]
+a3 <- a3[!is.na(a3)]
+
+
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+t.test(a2,a1)
+t.test(a2,a3)
+
+B      <- 1000
+t.vect <- vector(length=B)
+p.vect <- vector(length=B)
+
+for(i in 1:B){
+  boot.c <- sample(a1, size=3, replace=T)
+  boot.p <- sample(a2, size=3, replace=T)
+  ttest  <- t.test(boot.c, boot.p)
+  t.vect[i] <- ttest$statistic
+  p.vect[i] <- ttest$p.value
+}
+
+windows()
+  qqplot(t.vect, distribution="t", df=42)
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+ppmv <- do.call(rbind, ppmv)
+colnames(ppmv)[[5]] <- "ppm"
+
+
+ggplot(data = ppmv) + 
+    geom_density(aes(x=value, y= ..density.., fill = groups), alpha=0.4) +
+    coord_cartesian(xlim = c(0,1)) +
+    scale_fill_discrete(name = "Cosine Similarity Between:") +
+    ggtitle("Cosine similarity between Bacillus and Proteobacteria") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    xlab("Cosine Similarity") +
+    ylab("Density") +
+    facet_wrap(~`ppm`, scales ="free_y")
+```
+
+
