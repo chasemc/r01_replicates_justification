@@ -47,10 +47,77 @@ sampleIDs <- sampleIDs[sampleIDs != "NA"]
 
 There was one sample that wound up not having 8-technical replicates, so every bio rep needs to have 1 tech rep renadomly removed:
 ```{r}
-a<-(sapply(sampleIDs, function(x) strsplit(x, "_")[[1]][[1]]))
-b<-(sapply(sampleIDs, function(x) strsplit(x, "_")[[1]][[3]]))
+a <- sapply(strsplit(sampleIDs, "_"), "[", 1)
+b <- sapply(strsplit(sampleIDs, "_"), "[", 3)
 sort(table(paste0(a, "_", b)))
 ```
+
+Whole-spectrum comparisons within Strains
+```{r}
+spectraTable %>% 
+  filter(!is.na(proteinSpectrum)) %>% 
+  select(Strain_ID, proteinSpectrum) %>% 
+  collect %>% 
+  return(.) -> proteinSpectra
+
+proteinSpectra %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
+  return(.) -> shas
+
+ids <- shas$Strain
+
+proteinSpectra <- unlist(lapply(shas$proteinSpectrum, function(y){
+   unserialize(memDecompress(y, type= "gzip"))
+}))
+
+
+proteinSpectra <- lapply(proteinSpectra, function(x){
+  
+  x@intensity <- x@intensity / max(x@intensity)
+  x
+})
+
+
+
+proteinSpectra <- split(proteinSpectra, ids)
+
+w<-Vectorize(MALDIquant::intensity, "object")
+compared <- lapply(proteinSpectra, 
+                   function(x){
+                     
+                   coop::cosine(w(x))
+                     
+  
+})
+
+
+```
+
+
+Streptomyces, overall, had a greater variability than the Enterococcus strain in whole-spectra; and A019 had the most.
+```{r}
+par(mfrow = c(2,2))
+
+for(i in seq_along(compared)){
+
+plot(compared[[i]], 
+     xlim = c(0, 1),
+     ylim = c(0, 1), 
+     xlab = "Cosine",
+     ylab = "Cosine",
+     main = names(compared)[[i]])
+
+}
+```
+
+
+
+
+
+
+
+
 
 
 Get the spectra shas, and group by biological replicate
@@ -70,9 +137,10 @@ shas %>%
 
 ```
 
+split and then renadomly take three tech reps for each bio rep
 ```{r}
 grouped <- split(shas, shas$BioRep)
-
+grouped <- lapply(grouped, function(x) x[sample(1:nrow(x), 3), ] )
 ```
 
 Get Protein Peaks
@@ -91,14 +159,188 @@ Decompress, unserialize
 proteinPeaks <- lapply(proteinPeaks, function(x){
   
   unlist(lapply(x[[1]], function(y){
-  unserialize(memDecompress(y, type= "gzip"))
+  y <- unserialize(memDecompress(y, type= "gzip"))
+  for(i in y){
+   i@intensity <- i@intensity * 100 / max(i@intensity)
+}
+  return(i)
   }))
 })
 ```
 
 
+```{r}
+strains <- sapply(strsplit(names(proteinPeaks), "_"),"[",1)
+grouped_by_strain <- split(proteinPeaks, strains)
+```
+
+### Technical variability.
+Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
+
+```{r echo=FALSE}
+
+
+z  <-lapply(grouped_by_strain, 
+       function(x){
+         
+         lapply(x, function(y){
+           
+          y <- MALDIquant::trim(y, c(3000, 15000)) 
+             a <- MALDIquant::intensityMatrix(MALDIquant::binPeaks(y))
+             a[is.na(a)] <- 0
+             coop::tcosine(a)
+         })
+         
+  
+})
 
 
 
+zz <- lapply(z, function(y){
+  lapply(y, function(x){
+  
+ x <- as.vector(x)
+  as.data.frame(x)
+})
+})
+zz <- lapply(zz, function(x){
+  
+        x <- do.call(cbind, x)
+        colnames(x) <- 1:12
+        x
+  })
+
+par(mfrow=c(2,2))
+
+for(i in seq_along(zz)){
+boxplot(zz[[i]], ylim= c(0,1), 
+        main = names(zz)[[i]],
+        xlab = "Biological Replicates",
+        ylab = "Cosine Score")
+}
+
+
+```
+
+
+
+
+### Biological variability.
+Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
+
+```{r echo=FALSE}
+
+
+
+
+q3 <- lapply(grouped_by_strain, function(a){
+q <- lapply(1:100, function(xx){
+  
+  a1 <-  lapply(a, function(x) sample(x, 1))
+  
+  a1 %>% 
+    unlist %>%
+    MALDIquant::trim(., c(3000, 15000)) %>% 
+    MALDIquant::binPeaks(.) %>% 
+    MALDIquant::intensityMatrix() -> a2
+  
+  a2[is.na(a2)] <- 0
+  a3 <- coop::tcosine(a2)
+  
+})
+return(do.call(rbind, q))
+})
+
+
+par(mfrow=c(2,2))
+
+for(i in seq_along(q3)){
+boxplot(q3[[i]], ylim= c(0,1), 
+        main = names(q3)[[i]],
+        xlab = "Biological Replicates",
+        ylab = "Cosine Score")
+}
+
+
+         
+  
+```
+
+
+```{r}
+
+a <- grouped_by_strain[[2]]
+# randomly sample one technical replicate within each biological replicate
+a1 <-  lapply(a, function(x) sample(x, 1))
+
+
+b <- grouped_by_strain[[3]]
+# randomly sample one technical replicate within each biological replicate
+b1 <-  lapply(b, function(x) sample(x, 1))
+
+
+binned <- MALDIquant::binPeaks(unlist(list(a1,b1), recursive = T))
+
+binned <- intensityMatrix(binned)
+
+binned[is.na(binned)] <- 0
+
+binned <- coop::tcosine(binned)
+
+d <- binned
+d[upper.tri(d, diag = T)] <- NA
+
+a1 <- as.vector(d[1:12, 1:12])
+a2 <- as.vector(d[13:24, 1:12])
+a3 <- as.vector(d[13:24, 13:24])
+
+a1 <- a1[!is.na(a1)]
+a2 <- a2[!is.na(a2)]
+a3 <- a3[!is.na(a3)]
+
+
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+t.test(a2,a1)
+t.test(a2,a3)
+
+B      <- 1000
+t.vect <- vector(length=B)
+p.vect <- vector(length=B)
+
+for(i in 1:B){
+  boot.c <- sample(a1, size=3, replace=T)
+  boot.p <- sample(a2, size=3, replace=T)
+  ttest  <- t.test(boot.c, boot.p)
+  t.vect[i] <- ttest$statistic
+  p.vect[i] <- ttest$p.value
+}
+
+windows()
+  qqplot(t.vect, distribution="t", df=42)
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+ppmv <- do.call(rbind, ppmv)
+colnames(ppmv)[[5]] <- "ppm"
+
+
+ggplot(data = ppmv) + 
+    geom_density(aes(x=value, y= ..density.., fill = groups), alpha=0.4) +
+    coord_cartesian(xlim = c(0,1)) +
+    scale_fill_discrete(name = "Cosine Similarity Between:") +
+    ggtitle("Cosine similarity between Bacillus and Proteobacteria") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    xlab("Cosine Similarity") +
+    ylab("Density") +
+    facet_wrap(~`ppm`, scales ="free_y")
+```
 
 
