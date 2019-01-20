@@ -49,32 +49,34 @@ spectraTable <- dplyr::tbl(con, "IndividualSpectra")
 
 ```{r}
 spectraTable %>% 
-  filter(!is.na(proteinPeaks)) %>% 
-  select(Strain_ID, proteinPeaks) %>% 
+  filter(!is.na(proteinSpectrum)) %>% 
+  select(Strain_ID, proteinSpectrum) %>% 
   collect %>% 
-  return(.) -> proteinPeaksTable
+  return(.) -> proteinSpectraTable
 
-proteinPeaksTable %>% 
+proteinSpectraTable %>% 
   mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
   mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
   mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
   filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
-  return(.) -> proteinPeaksTable
+  return(.) -> proteinSpectraTable
 
 
-z<- unlist(lapply(proteinPeaksTable$proteinPeaks, function(x) unserialize(memDecompress(x, type= "gzip"))))
+z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
 
-proteinPeaksTable %>% 
-  mutate(proteinPeaks = z ) -> proteinPeaksTable
-remove(z)
-
+proteinSpectraTable %>% 
+  mutate(proteinSpectrum = z ) -> proteinSpectraTable
 
 
-proteinPeaksTable$proteinPeaks <- lapply(proteinPeaksTable$proteinPeaks, function(x){
+
+
+proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$proteinSpectrum, function(x){
   
-  x@intensity <- x@intensity / max(x@intensity)
+  x@intensity <- x@intensity / max(x@intensity) *100
   x
 })
+
+
 
 
 
@@ -83,9 +85,27 @@ proteinPeaksTable$proteinPeaks <- lapply(proteinPeaksTable$proteinPeaks, functio
 
 
 ```{r echo=FALSE}
+aa <- proteinSpectraTable$proteinSpectrum
 
-proteinPeaksTable$proteinPeaks %>% 
-  MALDIquant::trim(., c(3000, 15000)) -> proteinPeaks
+aa %>%
+  # MALDIquant::transformIntensity(., 
+  #                                method = "sqrt") %>% 
+  MALDIquant::smoothIntensity(.,
+                              method = "SavitzkyGolay", 
+                              halfWindowSize = 20) %>% 
+  MALDIquant::removeBaseline(.,
+                             method = "TopHat") %>% 
+  # MALDIquant::calibrateIntensity(.,
+  #                                method="TIC")  %>% 
+  MALDIquant::detectPeaks(., 
+                          method = "MAD", 
+                          halfWindowSize = 20, 
+                          SNR = 6)  %>% 
+  return(.) -> p
+
+
+p %>% 
+  MALDIquant::trim(., c(4000, 15000)) -> proteinPeaks
 
 
 
@@ -93,39 +113,93 @@ biologicalReplicates <- paste0(proteinPeaksTable$Strain, "_", proteinPeaksTable$
 
 groupedByBio <- split(proteinPeaks, biologicalReplicates)
 
-
-some <- lapply(groupedByBio, function(x){
+zw <- lapply(1:1000, function(x){
   
-  sample(x=x, 1)
-})
-
-
-ss <- split(some, sapply(strsplit(names(groupedByBio), "_"),"[",1))
-
-
-sw <- lapply(ss, function(x){
-  x <- unlist(x)
-  z <- determineWarpingFunctions(x, tolerance=0.002,
-                          method=c("lowess"),
-                          allowNoMatches=FALSE,
-                          plot=FALSE, plotInteractive=TRUE)
-  x <-warpMassPeaks(x,z)
-  x <- MALDIquant::binPeaks(unlist(x))
-  x <- MALDIquant::filterPeaks(x, minFrequency = .5)
-  MALDIquant::mergeMassPeaks(x)
+  
+  some <- lapply(groupedByBio, function(x){
+    
+    sample(x=x, 1)
+  })
+  
+  
+  ss <- split(unlist(some), sapply(strsplit(names(groupedByBio), "_"),"[",1))
+  
+  
+  
+  
+  
+  
+  sw <- lapply(ss, function(x){
+    y <- unlist(x)
+    
+    y <- MALDIquant::binPeaks(y, tolerance = .02)
+    y <- MALDIquant::filterPeaks(y, minNumber = 3)
+    
+    y <- MALDIquant::mergeMassPeaks(y, method = "sum", ignore.na=FALSE)
+    return(y)
+  })
+  
+  
+  
+  
+  
+  
+  binvec <- lapply(sw, function(x) x@mass)
+  zq <- IDBacApp::binnR(vectorList = binvec,
+                        ppm = 2000, 
+                        refSeqStart = 4000,
+                        refSeqEnd = 15000)
+  
+  #  collected <- lapply(zq, function(x) S4Vectors::unique(S4Vectors::subjectHits(x)))
+  collected <- lapply(zq, function(x) S4Vectors::unique(S4Vectors::subjectHits(x)))
+  
+  cvec <- sort(unique(unlist(collected)))
+  
+  zz<- lapply(collected, function(x) match(cvec, x))
+  
+  data <- do.call(rbind, zz)
+  
+  
+  data <- base::as.matrix(data)
+  # Change empty to 0
+  data[base::is.na(data)] <- 0
+  data[base::is.null(data)] <- 0
+  
+  
+  stats::as.dist(1 - coop::tcosine(data))
+  
   
 })
-
-ii <- MALDIquant::binPeaks(sw)
-
-ii <- MALDIquant::intensityMatrix(ii)
-
-ii[is.na(ii)] <- 0
+```
 
 
-coop::tcosine(ii)
+
+
+
+
+
+
+
+
+
+```{r}
+m2 <- lapply(p, mass)
+m <- binnR(vectorlist = m2,
+           ppm = 20000, 
+           low = 2000, 
+           high = 20000, 
+           increment = 1)
+
+z <- do.call(rbind,m)
+z <- coop::tcosine(z)
 
 ```
+
+
+
+
+
+
 
 
 
@@ -139,36 +213,36 @@ Boxplots represent variability of technical-replicates cosine score within each 
 
 
 q3 <- lapply(grouped_by_strain, function(a){
-q <- lapply(1:100, function(xx){
-  
-  a1 <-  lapply(a, function(x) sample(x, 1))
-  
-  a1 %>% 
-    unlist %>%
-    MALDIquant::trim(., c(3000, 15000)) %>% 
-    MALDIquant::binPeaks(.) %>% 
-    MALDIquant::intensityMatrix() -> a2
-  
-  a2[is.na(a2)] <- 0
-  a3 <- coop::tcosine(a2)
-  
-})
-return(do.call(rbind, q))
+  q <- lapply(1:100, function(xx){
+    
+    a1 <-  lapply(a, function(x) sample(x, 1))
+    
+    a1 %>% 
+      unlist %>%
+      MALDIquant::trim(., c(3000, 15000)) %>% 
+      MALDIquant::binPeaks(.) %>% 
+      MALDIquant::intensityMatrix() -> a2
+    
+    a2[is.na(a2)] <- 0
+    a3 <- coop::tcosine(a2)
+    
+  })
+  return(do.call(rbind, q))
 })
 
 
 par(mfrow=c(2,2))
 
 for(i in seq_along(q3)){
-boxplot(q3[[i]], ylim= c(0,1), 
-        main = names(q3)[[i]],
-        xlab = "Biological Replicates",
-        ylab = "Cosine Score")
+  boxplot(q3[[i]], ylim= c(0,1), 
+          main = names(q3)[[i]],
+          xlab = "Biological Replicates",
+          ylab = "Cosine Score")
 }
 
 
-         
-  
+
+
 ```
 
 
@@ -226,7 +300,7 @@ for(i in 1:B){
 }
 
 windows()
-  qqplot(t.vect, distribution="t", df=42)
+qqplot(t.vect, distribution="t", df=42)
 
 ```
 
@@ -238,14 +312,14 @@ colnames(ppmv)[[5]] <- "ppm"
 
 
 ggplot(data = ppmv) + 
-    geom_density(aes(x=value, y= ..density.., fill = groups), alpha=0.4) +
-    coord_cartesian(xlim = c(0,1)) +
-    scale_fill_discrete(name = "Cosine Similarity Between:") +
-    ggtitle("Cosine similarity between Bacillus and Proteobacteria") +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    xlab("Cosine Similarity") +
-    ylab("Density") +
-    facet_wrap(~`ppm`, scales ="free_y")
+  geom_density(aes(x=value, y= ..density.., fill = groups), alpha=0.4) +
+  coord_cartesian(xlim = c(0,1)) +
+  scale_fill_discrete(name = "Cosine Similarity Between:") +
+  ggtitle("Cosine similarity between Bacillus and Proteobacteria") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Cosine Similarity") +
+  ylab("Density") +
+  facet_wrap(~`ppm`, scales ="free_y")
 ```
 
 
