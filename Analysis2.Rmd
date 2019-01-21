@@ -190,13 +190,43 @@ zap <- do.call(rbind.data.frame, unlist(xa, recursive = F))
 
 
 ```{r}
-xa <- as.tbl(xa)
+xa <- as.tbl(zap)
 
 xa %>% 
-  filter(boot == 1)
+  group_by(boot == 1) ->p
+```
+
+```{r}
+
+xa %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_violin(aes(y=B004, x=factor(techReps))) +
+    facet_wrap(~bioReps, scales="fixed")
+```
+
+```{r}
+xa %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) %>% 
+    
+    ggplot() + 
+    geom_violin(aes(y=B004, x=factor(techReps))) +
+    facet_wrap(~bioReps, scales="fixed")
 ```
 
 
+```{r}
+xa %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A019)) %>% 
+    
+    ggplot() + 
+    geom_violin(aes(y=B004, x=factor(techReps))) +
+    facet_wrap(~bioReps, scales="fixed")
+```
 
 
 
