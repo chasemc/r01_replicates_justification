@@ -105,7 +105,7 @@ aa %>%
 
 
 p %>% 
-  MALDIquant::trim(., c(4000, 15000)) -> proteinPeaks
+  MALDIquant::trim(., c(4000, 10000)) -> proteinPeaks
 
 
 
@@ -193,26 +193,6 @@ boxplot(z, ylim = c(0,1), main = "172-6")
 ```
 
 
-A046
-```{r}
-z<-lapply(zw, function(x) { 
-       
-  x <- as.matrix(x)
-  x[upper.tri(x,diag = TRUE)] <- NA
-  data.frame(`172-6` = x[3,1],
-             A019 = x[3,2],
-             A046 = NA,
-             B004 = x[4,3])
-})
-
-z <- do.call(rbind, z)
-z <- as.data.frame(z)
-
-boxplot(z, ylim = c(0,1), main = "A046")
-
-```
-
-
 A019
 ```{r}
 z<-lapply(zw, function(x) { 
@@ -229,6 +209,26 @@ z<-lapply(zw, function(x) {
 z <- do.call(rbind, z)
 z <- as.data.frame(z)
 boxplot(z, ylim = c(0,1), main= "A019")
+
+```
+
+
+A046
+```{r}
+z<-lapply(zw, function(x) { 
+       
+  x <- as.matrix(x)
+  x[upper.tri(x,diag = TRUE)] <- NA
+  data.frame(`172-6` = x[3,1],
+             A019 = x[3,2],
+             A046 = NA,
+             B004 = x[4,3])
+})
+
+z <- do.call(rbind, z)
+z <- as.data.frame(z)
+
+boxplot(z, ylim = c(0,1), main = "A046")
 
 ```
 
