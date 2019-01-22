@@ -184,7 +184,7 @@ return(cbind.data.frame(binned,
 
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 
 
  numCores <- parallel::detectCores()
@@ -265,7 +265,7 @@ return(cbind.data.frame(binned,
 
 parallel::stopCluster(numCores)
 
-#saveRDS(pp, "data/1000-boots.rds")
+saveRDS(pp, "data/1000-boots.rds")
 ```
 
 
