@@ -1,17 +1,19 @@
 ---
 title: "Analysis"
 author: "Chase Clark"
-date: "January 19, 2019"
+date: "January 23, 2019"
 output: 
   html_document:
     toc: true
-    toc_depth: 2
+    toc_depth: 3
     toc_float: true
+self_contained: true
+
 
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F)
+```{r setup, include=FALSE, }
+knitr::opts_chunk$set(echo = F, cache=TRUE)
 ```
 
 
@@ -20,48 +22,42 @@ The IDBac version used to create the SQL was:  https://github.com/chasemc/IDBacA
 This can be installed via: 
 devtools::install_github("chasemc/IDBacApp@9c7609a")
 
+
+Means and standard deviations were computed by 1,000 random-sample bootstraps.
+
+
+
 ```{r message=FALSE, warning=FALSE}
 library(RSQLite)
 library(DBI)
 library(dplyr)
 library(magrittr)
 library(MALDIquant)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+```
+
+```{r}
+set.seed(42)
 ```
 
 
-Connect to SQLite, show available tables
 ```{r}
 sqliteFile <- "data/r01_replicates.sqlite"
-
+sqliteFile <- "data/k2_calibration.sqlite"
 
 con <- DBI::dbConnect(drv = RSQLite::SQLite(),
                       sqliteFile)
 DBI::dbListTables(con)
 ```
 
-All raw and processed spectra, peaklists are contained in the table "IndividualSpectra" 
 ```{r}
 spectraTable <- dplyr::tbl(con, "IndividualSpectra")
 ```
 
 
-```{r}
-sampleIDs <- spectraTable %>% pull(Strain_ID)
-sampleIDs <- sampleIDs[sampleIDs != "BTS"]
-sampleIDs <- sampleIDs[sampleIDs != "NA"]
-```
 
-There was one sample that wound up not having 8-technical replicates, so every bio rep will have 1 technical replicate randomly removed:
-```{r}
-a <- sapply(strsplit(sampleIDs, "_"), "[", 1)
-b <- sapply(strsplit(sampleIDs, "_"), "[", 3)
-sort(table(paste0(a, "_", b)))
-```
-
-# Whole-spectrum comparisons:
-
-## Biological + Technical
-1: Summarise whole-spectrum comparisons within strains (biological replicates + technical replicates)
 ```{r}
 spectraTable %>% 
   filter(!is.na(proteinSpectrum)) %>% 
@@ -87,468 +83,654 @@ proteinSpectraTable %>%
 
 proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$proteinSpectrum, function(x){
   
-  x@intensity <- x@intensity / max(x@intensity)
+  x@intensity <- x@intensity / max(x@intensity) *100
   x
 })
 
 
 
-```
-
-
-- Streptomyces, overall, had a greater variability than the Enterococcus strain in whole-spectra; and A019 had the most.
-
-```{r}
-
-
-protein <- split(proteinSpectraTable$proteinSpectrum, proteinSpectraTable$Strain)
-
-w<-Vectorize(MALDIquant::intensity, "object")
-
-compared <- lapply(protein, 
-                   function(x){
-                     
-                   coop::cosine(w(x))
-                     
-  
-})
-
-par(mfrow = c(2,2))
-
-for(i in seq_along(compared)){
-
-plot(compared[[i]], 
-     xlim = c(0.4, 1),
-     ylim = c(0.4, 1), 
-     xlab = "Cosine",
-     ylab = "Cosine",
-     main = names(compared)[[i]])
-
-}
-```
-
-## Biological 
-
-2: Compare technical replicates within each biological replicate
-
-- Cosine similarities of technical replicates are very similar
-
-
-Of note: A019_1, A046_2, 
-```{r}
-
-
-protein <- split(proteinSpectraTable$proteinSpectrum, 
-                 paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio))
-
-w<-Vectorize(MALDIquant::intensity, "object")
-
-compared <- lapply(protein, 
-                   function(x){
-                     
-                   coop::cosine(w(x))
-                     
-  
-})
-
-
-par(mfrow = c(3,4))
-
-for(i in seq_along(compared)){
-    
-    plot(compared[[i]], 
-         xlim = c(0.5, 1),
-         ylim = c(0.5, 1), 
-         xlab = "Cosine",
-         ylab = "Cosine",
-         main = names(compared)[[i]])
-    
-}
-```
-
-
-```{r eval=FALSE, include=FALSE}
-for(i in seq_along(protein)){
-  png(filename = paste0("images/techReps/", names(protein)[[i]], ".png"),
-      width = 900, 
-      height = 600,
-      units = "px")
-  
-  par(mfrow = c(2,2))
-  
-  for(x in seq_along(protein[[i]])){
-    plot(protein[[i]][[x]], main = protein[[i]][[x]]@metaData$Strain)
-  }
-  dev.off()
-  
-} 
-```
-
-```{r eval=FALSE, include=FALSE}
-spectraTable %>% 
-  filter(!is.na(smallMoleculeSpectrum)) %>% 
-  select(Strain_ID, smallMoleculeSpectrum) %>% 
-  collect %>% 
-  return(.) -> proteinSpectraTable
-
-proteinSpectraTable %>% 
-  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
-  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
-  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
-  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
-  return(.) -> proteinSpectraTable
-
-
-z<- unlist(lapply(proteinSpectraTable$smallMoleculeSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
-
-proteinSpectraTable %>% 
-  mutate(smallMoleculeSpectrum = z ) -> proteinSpectraTable
-
-
-
-
-proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$smallMoleculeSpectrum, function(x){
-  
-  x@intensity <- x@intensity / max(x@intensity)
-  x
-})
-
-
-protein <- split(proteinSpectraTable$proteinSpectrum, 
-                 paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio))
-for(i in seq_along(protein)){
-  png(filename = paste0("images/techReps/small/", names(protein)[[i]], ".png"),
-      width = 900, 
-      height = 600,
-      units = "px")
-  
-  par(mfrow = c(2,2))
-  
-  for(x in seq_along(protein[[i]])){
-    plot(protein[[i]][[x]], main = protein[[i]][[x]]@metaData$Strain)
-  }
-  dev.off()
-  
-} 
-```
-
-
-----
-
-
-
-```{r}
-
-spectraTable %>% 
-  filter(!is.na(proteinSpectrum)) %>% 
-  select(Strain_ID, proteinSpectrum) %>% 
-  collect %>% 
-  return(.) -> proteinSpectraTable
-
-proteinSpectraTable %>% 
-  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
-  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
-  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
-  filter(Strain %in% c("A019")) %>%
-  filter(Bio == 1) %>%
-  return(.) -> proteinSpectraTable
-
-
-z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
-
-```
-
-
-A019_Bio_1_tech_2 is a bad spectrum
-```{r}
-par(mfrow = c(2,2))
-for(i in seq_along(z)){
-plot(z[[i]], main = z[[i]]@metaData$Strain)
-}
-```
-
-----
-
-
-```{r}
-
-spectraTable %>% 
-  filter(!is.na(proteinSpectrum)) %>% 
-  select(Strain_ID, proteinSpectrum) %>% 
-  collect %>% 
-  return(.) -> proteinSpectraTable
-
-proteinSpectraTable %>% 
-  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
-  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
-  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
-  filter(Strain %in% c("A046")) %>%
-  filter(Bio == 2) %>%
-  return(.) -> proteinSpectraTable
-
-
-z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
 
 
 ```
 
 
-A046_Bio_2_tech_1 is a bad spectrum
-```{r}
-par(mfrow = c(2,2))
-for(i in seq_along(z)){
-plot(z[[i]], main = z[[i]]@metaData$Strain)
-}
-
-```
-
-
-
-
-
-
-----
-
-
-
-----
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-#Get the spectra shas, and group by biological replicate
-spectraTable %>% 
-  filter(!is.na(proteinPeaks)) %>% 
-  select(spectrumSHA, Strain_ID) %>% 
-  filter(!Strain_ID %in% c("NA", "BTS")) %>% 
-  collect %>% 
-  return(.) -> shas
-
-shas %>% 
-  mutate(Strain_ID, BioRep = paste0(sapply(strsplit(Strain_ID, "_"), "[", 1),
-                                    "_",
-                                    sapply(strsplit(Strain_ID, "_"), "[", 3))) %>%  
-  return(.) -> shas
-
-```
-
-```{r}
-#split and then renadomly take three tech reps for each bio rep
-grouped <- split(shas, shas$BioRep)
-grouped <- lapply(grouped, function(x) x[sample(1:nrow(x), 3), ] )
-```
-
-```{r}
-#Get Protein Peaks
-proteinPeaks <- lapply(grouped, function(x){
-  
-  spectraTable %>% 
-    filter(spectrumSHA %in% x$spectrumSHA) %>% 
-    select(proteinPeaks) %>% collect 
-  
-})
-```
-
-```{r}
-#Decompress, unserialize
-proteinPeaks <- lapply(proteinPeaks, function(x){
-  
-  unlist(lapply(x[[1]], function(y){
-  y <- unserialize(memDecompress(y, type= "gzip"))
-  for(i in y){
-   i@intensity <- i@intensity * 100 / max(i@intensity)
-}
-  return(i)
-  }))
-})
-```
-
-
-```{r}
-strains <- sapply(strsplit(names(proteinPeaks), "_"),"[",1)
-grouped_by_strain <- split(proteinPeaks, strains)
-```
-# Peaks Variability
-
-## Technical variability.
-Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
 
 ```{r echo=FALSE}
+proteinSpectraTable$proteinSpectrum %>% 
+  MALDIquant::smoothIntensity(.,
+                              method = "SavitzkyGolay", 
+                              halfWindowSize = 20) %>% 
+  MALDIquant::removeBaseline(.,
+                             method = "TopHat") %>% 
+  MALDIquant::detectPeaks(., 
+                          method = "MAD", 
+                          halfWindowSize = 20, 
+                          SNR = 6)  %>% 
+  return(.) -> p
 
 
-z  <-lapply(grouped_by_strain, 
-       function(x){
-         
-         lapply(x, function(y){
-           
-          y <- MALDIquant::trim(y, c(3000, 15000)) 
-             a <- MALDIquant::intensityMatrix(MALDIquant::binPeaks(y))
-             a[is.na(a)] <- 0
-             coop::tcosine(a)
-         })
-         
+p %>% 
+  MALDIquant::trim(., c(4000, 20000)) -> proteinPeaks
+
+
+
+biologicalReplicates <- paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio)
+
+groupedByBio <- split(proteinPeaks, biologicalReplicates)
+
+ids <- sapply(strsplit(names(groupedByBio), "_"), "[", 1)
+
+  # Merge technical replicates
+
+saveRDS(groupedByBio, "data/groupedByBio.rds")
+saveRDS(ids, "data/ids.rds")
+
+
+theFunc <- function(bio, tech, boot){
+
+  techReps <- tech
+  bioReps <- bio
   
-})
+  techSpec <- lapply(groupedByBio, 
+                     function(x){
+                       x <- sample(x, techReps)
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
 
 
-
-zz <- lapply(z, function(y){
-  lapply(y, function(x){
   
- x <- as.vector(x)
-  as.data.frame(x)
-})
-})
-zz <- lapply(zz, function(x){
   
-        x <- do.call(cbind, x)
-        colnames(x) <- 1:12
-        x
-  })
-
-par(mfrow=c(2,2))
-
-for(i in seq_along(zz)){
-boxplot(zz[[i]], ylim= c(0,1), 
-        main = names(zz)[[i]],
-        xlab = "Biological Replicates",
-        ylab = "Cosine Score")
-}
-
-
-```
+  bioSpec <- lapply(split(techSpec, ids), 
+                     function(x){
+                       
+                       x <- sample(x, bioReps)
+                  
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "relaxed",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
 
 
 
 
-## Biological variability.
-Boxplots represent variability of technical-replicates cosine score within each of 12 biological replicates.
-
-```{r echo=FALSE}
 
 
-
-
-q3 <- lapply(grouped_by_strain, function(a){
-q <- lapply(1:100, function(xx){
-  
-  a1 <-  lapply(a, function(x) sample(x, 1))
-  
-  a1 %>% 
-    unlist %>%
-    MALDIquant::trim(., c(3000, 15000)) %>% 
-    MALDIquant::binPeaks(.) %>% 
-    MALDIquant::intensityMatrix() -> a2
-  
-  a2[is.na(a2)] <- 0
-  a3 <- coop::tcosine(a2)
-  
-})
-return(do.call(rbind, q))
-})
-
-
-par(mfrow=c(2,2))
-
-for(i in seq_along(q3)){
-boxplot(q3[[i]], ylim= c(0,1), 
-        main = names(q3)[[i]],
-        xlab = "Biological Replicates",
-        ylab = "Cosine Score")
-}
-
-
-         
-  
-```
-
-
-```{r}
-
-a <- grouped_by_strain[[2]]
-# randomly sample one technical replicate within each biological replicate
-a1 <-  lapply(a, function(x) sample(x, 1))
-
-
-b <- grouped_by_strain[[3]]
-# randomly sample one technical replicate within each biological replicate
-b1 <-  lapply(b, function(x) sample(x, 1))
-
-
-binned <- MALDIquant::binPeaks(unlist(list(a1,b1), recursive = T))
+binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
 
 binned <- intensityMatrix(binned)
 
 binned[is.na(binned)] <- 0
 
-binned <- coop::tcosine(binned)
-
-d <- binned
-d[upper.tri(d, diag = T)] <- NA
-
-a1 <- as.vector(d[1:12, 1:12])
-a2 <- as.vector(d[13:24, 1:12])
-a3 <- as.vector(d[13:24, 13:24])
-
-a1 <- a1[!is.na(a1)]
-a2 <- a2[!is.na(a2)]
-a3 <- a3[!is.na(a3)]
+binned <- 1 - coop::tcosine(binned)
+colnames(binned) <- names(bioSpec)
+diag(binned) <- NA
 
 
 
+return(cbind.data.frame(binned,
+      techReps = techReps,
+      bioReps = bioReps,
+      boot = boot
+      ))
 
-```
-
-
-```{r eval=FALSE, include=FALSE}
-t.test(a2,a1)
-t.test(a2,a3)
-
-B      <- 1000
-t.vect <- vector(length=B)
-p.vect <- vector(length=B)
-
-for(i in 1:B){
-  boot.c <- sample(a1, size=3, replace=T)
-  boot.p <- sample(a2, size=3, replace=T)
-  ttest  <- t.test(boot.c, boot.p)
-  t.vect[i] <- ttest$statistic
-  p.vect[i] <- ttest$p.value
 }
 
-windows()
-  qqplot(t.vect, distribution="t", df=42)
 
 ```
-
-
 
 ```{r eval=FALSE, include=FALSE}
-ppmv <- do.call(rbind, ppmv)
-colnames(ppmv)[[5]] <- "ppm"
 
 
-ggplot(data = ppmv) + 
-    geom_density(aes(x=value, y= ..density.., fill = groups), alpha=0.4) +
-    coord_cartesian(xlim = c(0,1)) +
-    scale_fill_discrete(name = "Cosine Similarity Between:") +
-    ggtitle("Cosine similarity between Bacillus and Proteobacteria") +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    xlab("Cosine Similarity") +
-    ylab("Density") +
-    facet_wrap(~`ppm`, scales ="free_y")
+ numCores <- parallel::detectCores()
+numCores <- parallel::makeCluster(numCores - 2) #Setup cluster
+pp <- parallel::parLapply(numCores, 1:1000, function(boot) {
+library(MALDIquant)
+  groupedByBio <- readRDS("data/groupedByBio.rds")
+ ids <- readRDS("data/ids.rds")
+  a<-expand.grid(1:3, 1:12)
+  
+theFunc <- function(bio, tech, boot){
+
+  techReps <- tech
+  bioReps <- bio
+  
+  techSpec <- lapply(groupedByBio, 
+                     function(x){
+                       x <- sample(x, techReps)
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+  
+  
+  bioSpec <- lapply(split(techSpec, ids), 
+                     function(x){
+                       
+                       x <- sample(x, bioReps)
+                  
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+
+
+
+
+binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
+
+binned <- intensityMatrix(binned)
+
+binned[is.na(binned)] <- 0
+
+binned <- 1 - coop::tcosine(binned)
+colnames(binned) <- names(bioSpec)
+diag(binned) <- NA
+
+
+
+return(cbind.data.frame(binned,
+      techReps = techReps,
+      bioReps = bioReps,
+      boot = boot
+      ))
+
+}
+
+
+  mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
+
+})
+
+
+
+parallel::stopCluster(numCores)
+
+saveRDS(pp, "data/1000-boots.rds")
 ```
 
+```{r}
+pp <- readRDS("data/1000-boots.rds")
+zap <- do.call(rbind.data.frame, unlist(pp, recursive = F))
+
+```
+
+
+
+# Boxplot Comparisons of Biological andf Technical Replicates 
+
+This section shows the effects of 1 to 3 technical replicates at each of 12 biological replicates.
+
+Technical replicates were used to create a merged peak list at each biological replicate, then each bioligcal replicate merged.
+Peak-handling (eg binning settings) were kept the same for both technical and biological replicates. Percent peak presence was kept at 50% for both technical and biological replicates.
+
+
+The boxplots below depict each of the four isolates against each other. 
+As a reminder: 
+- B004 and A046 share 100% 16S rRNA sequence
+- A046 and A019 share 98.03% 16S rRNA sequence (29 nt)
+- 172-6 is an *Enterococcus* sp.
+See the Study Design  document for more details
+
+## B004
+
+### B004 vs A019
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A019)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+### B004 vs A046
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+
+
+### B004 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+## A046
+
+
+### A046 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A046 vs A019
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(A019)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A046 vs B004
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(B004)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+## A019
+
+
+### A019 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A019 vs A046
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(A046)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A019 vs B004
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(B004)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+
+
+
+---
+---
+
+
+# Effect of Technical Replicates with increaing Biological Replicates (Standard Deviations)
+
+This section of the document depicts the effect of adding between 1 and 3 technical Replicates in scenarios where 1 to 12 biological replicates are included. The measurements depicted are the standard deviation of cosine similarity.
+
+*Note: It is important to remember here that at each biological replicate level, technical replicates are not additive but **multiply** the number of samples*
+
+
+
+```{r}
+sub <- function(x){ x[[1]] - x[[2]]}
+
+data <- dplyr::as.tbl(zap)
+plotter <- function(data, one, two){
+
+  data %>% 
+    filter(!is.na(UQ(sym(one)))) %>%
+    filter(is.na(UQ(sym(two)))) %>% 
+    group_by(boot, techReps,bioReps) %>% 
+    summarise(mean = mean(UQ(sym(one)))) %>% 
+    ungroup %>% 
+    group_by(techReps, bioReps) %>% 
+        summarise(sd= sd(mean), mean = mean(mean)) %>% 
+   
+     ggplot(data = .) + 
+  geom_point(aes(x = factor(bioReps),
+                 y = sd)) +
+  geom_line(aes(x = bioReps,
+                y = sd,
+                group = factor(techReps),
+                color = factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Standard Deviation of Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                one, " vs ", two)) +
+    coord_cartesian(ylim=c(0,.2))%>% 
+    return(.) 
+}
+  
+
+
+
+```
+
+## Effects measured against A046
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(grid::textGrob(""),
+                        plotter(data, "A046","B004"),
+                        plotter(data, "A046","A019"),
+                        plotter(data, "A046","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against B004
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "B004","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "B004","A019"),
+                        plotter(data, "B004","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against A019
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "A019","A046"),
+                        plotter(data, "A019","B004"),
+                        grid::textGrob(""),
+                        plotter(data, "A019","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against 172-6
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "172-6","A046"),
+                        plotter(data, "172-6","B004"),
+                        plotter(data, "172-6","A019"),
+                        grid::textGrob(""),
+                        ncol=2, nrow=2)
+```
+
+
+
+
+
+---
+---
+
+# Effect of Technical Replicates with increaing Biological Replicates (Means)
+
+This section of the document depicts the effect of adding between 1 and 3 technical Replicates in scenarios where 1 to 12 biological replicates are included. The measurements depicted are the means of cosine similarity.
+
+*Note: It is important to remember here that at each biological replicate level, technical replicates are not additive but **multiply** the number of samples*
+
+
+```{r}
+sub <- function(x){ x[[1]] - x[[2]]}
+
+data <- dplyr::as.tbl(zap)
+plotter <- function(data, one, two){
+
+  data %>% 
+    filter(!is.na(UQ(sym(one)))) %>%
+    filter(is.na(UQ(sym(two)))) %>% 
+    group_by(boot, techReps,bioReps) %>% 
+    summarise(mean = mean(UQ(sym(one)))) %>% 
+    ungroup %>% 
+    group_by(techReps, bioReps) %>% 
+        summarise(sd= sd(mean), mean = mean(mean)) %>% 
+   
+     ggplot(data = .) + 
+  geom_point(aes(x = factor(bioReps),
+                 y = mean)) +
+  geom_line(aes(x = bioReps,
+                y = mean,
+                group = factor(techReps),
+                color = factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Standard Deviation of Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                one, " vs ", two)) +
+    coord_cartesian(ylim=c(0,1))%>% 
+    return(.) 
+}
+  
+
+
+
+```
+
+
+## Effects measured against A046
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(grid::textGrob(""),
+                        plotter(data, "A046","B004"),
+                        plotter(data, "A046","A019"),
+                        plotter(data, "A046","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against B004
+
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "B004","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "B004","A019"),
+                        plotter(data, "B004","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against A019
+
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "A019","A046"),
+                        plotter(data, "A019","B004"),
+                        grid::textGrob(""),
+                        plotter(data, "A019","172-6"),
+                        ncol=2, nrow=2)
+```
+
+## Effects measured against 172-6
+
+
+```{r,  fig.width=12, fig.height=12}
+gridExtra::grid.arrange(plotter(data, "172-6","A046"),
+                        plotter(data, "172-6","B004"),
+                        plotter(data, "172-6","A019"),
+                        grid::textGrob(""),
+                        ncol=2, nrow=2)
+```
+
+
+
+
+
+
+
+----
+
+# Evaluating the effects of increasing MALDI sample spots
+
+
+This section 
+
+In this case it looks like increasing sample spots, in general, is the most effect strategy. 
+
+
+
+
+
+
+```{r}
+sub <- function(x){ x[[1]] - x[[2]]}
+
+plotter <- function(data, one, two){
+
+data %>% 
+  filter(!is.na(UQ(sym(one)))) %>%
+  filter(is.na(UQ(sym(two)))) %>% 
+  group_by(boot, techReps,bioReps) %>% 
+  summarise(mean = mean(UQ(sym(one)))) %>% 
+  ungroup %>% 
+  group_by(techReps, bioReps) %>% 
+  summarise(sd= sd(mean), mean = mean(mean)) %>% 
+  mutate(spots = bioReps * techReps) -> pp
+
+p <- ggplot(pp) +
+  geom_point(aes(x=spots, y=sd, color=factor(techReps)))+
+  geom_line(aes(x=spots, y=sd, color=factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("MALDI Sample Spots") +
+  ylab("Standard Deviation of Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                 one, " vs ", two)) 
+
+p2 <- ggplot(pp) +
+  geom_point(aes(x=spots, y=mean, color=factor(techReps))) +
+  geom_line(aes(x=spots, y=mean, color=factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("MALDI Sample Spots") +
+  ylab("Mean of Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                 one, " vs ", two)) 
+
+return(list(p,
+            p2))
+}
+  
+```
+
+
+```{r,  fig.width=12, fig.height=12}
+a1 <- plotter(data, "A046","A019")
+a2 <- plotter(data, "A046","B004")
+a3 <- plotter(data, "A046","172-6")
+
+a1 <- gridExtra::arrangeGrob(a1[[1]], a1[[2]], ncol = 2)
+a2 <- gridExtra::arrangeGrob(a2[[1]], a2[[2]], ncol = 2)
+a3 <- gridExtra::arrangeGrob(a3[[1]], a3[[2]], ncol = 2)
+
+z<-gridExtra::arrangeGrob(a1,a2,a3, ncol=1)
+grid::grid.draw(z)
+```
+
+
+```{r,  fig.width=12, fig.height=12}
+a1 <- plotter(data, "A019","A046")
+a2 <- plotter(data, "A019","B004")
+a3 <- plotter(data, "A019","172-6")
+
+a1 <- gridExtra::arrangeGrob(a1[[1]], a1[[2]], ncol = 2)
+a2 <- gridExtra::arrangeGrob(a2[[1]], a2[[2]], ncol = 2)
+a3 <- gridExtra::arrangeGrob(a3[[1]], a3[[2]], ncol = 2)
+
+z<-gridExtra::arrangeGrob(a1,a2,a3, ncol=1)
+grid::grid.draw(z)
+```
+
+
+```{r,  fig.width=12, fig.height=12}
+a1 <- plotter(data, "B004","A046")
+a2 <- plotter(data, "B004","A019")
+a3 <- plotter(data, "B004","172-6")
+
+a1 <- gridExtra::arrangeGrob(a1[[1]], a1[[2]], ncol = 2)
+a2 <- gridExtra::arrangeGrob(a2[[1]], a2[[2]], ncol = 2)
+a3 <- gridExtra::arrangeGrob(a3[[1]], a3[[2]], ncol = 2)
+
+z<-gridExtra::arrangeGrob(a1,a2,a3, ncol=1)
+grid::grid.draw(z)
+```
+
+
+```{r,  fig.width=12, fig.height=12}
+a1 <- plotter(data, "172-6","A046")
+a2 <- plotter(data, "172-6","A019")
+a3 <- plotter(data, "172-6","B004")
+
+a1 <- gridExtra::arrangeGrob(a1[[1]], a1[[2]], ncol = 2)
+a2 <- gridExtra::arrangeGrob(a2[[1]], a2[[2]], ncol = 2)
+a3 <- gridExtra::arrangeGrob(a3[[1]], a3[[2]], ncol = 2)
+
+z<-gridExtra::arrangeGrob(a1,a2,a3, ncol=1)
+
+grid::grid.draw(z)
+```
 
