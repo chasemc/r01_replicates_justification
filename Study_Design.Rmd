@@ -3,6 +3,8 @@ title: "Replicates_Study_Design"
 author: "Chase Clark"
 date: "November 24, 2018"
 output: html_document
+self_contained: true
+
 ---
 
 ### Purpose:
@@ -48,7 +50,7 @@ plot(hclust(distances,
 
 
 
-We chose these strains because of the genetic similarity of B004 and A046 and their coming from separate locations, while A019 is less similar than B004 or A046 but from the same location as A046;  allowing us to reduce any effect of collection-location of the strain as a potential factor.
+I chose these strains because of the genetic similarity of B004 and A046 and their coming from separate locations, while A019 is less similar than B004 or A046 but from the same location as A046;  allowing us to reduce any effect of collection-location of the strain as a potential factor.
 
 172-6 was chosen as a gram-positive outlier.
 
@@ -99,7 +101,7 @@ ___
 
 ### Random Acquistion
 
-We used the enclosed R-code (see "Replicates_Study_Design.Rmd") to generate a randomization of biological and technical replicates across the MALDI plate and across calibration-spots. The only restrictions to the randomization were that each strain had to evenly representd, by either biological, or technical replicates, among each calibration spot.
+I used the enclosed R-code (see "Replicates_Study_Design.Rmd") to generate a randomization of biological and technical replicates across the MALDI plate and across calibration-spots. The only restrictions to the randomization were that each strain had to evenly representd, by either biological, or technical replicates, among each calibration spot.
 
 
 
