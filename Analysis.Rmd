@@ -196,6 +196,8 @@ return(cbind.data.frame(binned,
  numCores <- parallel::detectCores()
 numCores <- parallel::makeCluster(numCores - 2) #Setup cluster
 pp <- parallel::parLapply(numCores, 1:1000, function(boot) {
+  set.seed(42)
+
 library(MALDIquant)
   groupedByBio <- readRDS("data/groupedByBio.rds")
  ids <- readRDS("data/ids.rds")
@@ -280,6 +282,115 @@ zap <- do.call(rbind.data.frame, unlist(pp, recursive = F))
 
 ```
 
+---
+
+# Cosine Correlations 
+
+
+## Comparing *Streptomyces*
+
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A019)) -> pl
+
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) -> pl2
+
+pl$Group <-"B004 vs A019"
+
+pl2$Group <-"B004 vs A046"
+combined <- rbind(pl, pl2)
+
+combined %>%
+  mutate(cc = paste0(Group, "- ", techReps, " technical")) -> combined
+    
+
+
+ggplot(combined) + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(cc))) +
+    coord_cartesian(ylim=c(0,1)) + 
+    labs(colour="Technical Replicates") +
+    xlab("Biological Replicates") +
+    ylab("Cosine Similarity") +
+    ggtitle("The Effect of Biological and Technical Replicates On Discriminating Streptomyces") 
+
+    
+    
+    
+```
+
+
+### Comparing *Streptomyces* to *Enterococcus*
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(`172-6`)) -> pl
+
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) -> pl2
+
+pl$Group <-"B004 vs 172-6"
+
+pl2$Group <-"B004 vs A046"
+combined <- rbind(pl, pl2)
+
+combined %>%
+  mutate(cc = paste0(Group, "- ", techReps, " technical")) -> combined
+    
+
+
+ggplot(combined) + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(cc))) +
+    coord_cartesian(ylim=c(0,1)) + 
+    labs(colour="Technical Replicates") +
+    xlab("Biological Replicates") +
+    ylab("Cosine Similarity") +
+    ggtitle("The Effect of Biological and Technical Replicates On Discriminating Streptomyces") 
+
+    
+    
+    
+```
+
+
+
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(`172-6`)) -> pl
+
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(B004)) -> pl2
+
+pl$Group <-"A046 vs 172-6"
+
+pl2$Group <-"A046 vs B004"
+combined <- rbind(pl, pl2)
+
+combined %>%
+  mutate(cc = paste0(Group, "- ", techReps, " technical")) -> combined
+    
+
+
+ggplot(combined) + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps),fill=factor(cc))) +
+    coord_cartesian(ylim=c(0,1)) + 
+    labs(colour="Technical Replicates") +
+    xlab("Biological Replicates") +
+    ylab("Cosine Similarity") +
+    ggtitle("The Effect of Biological and Technical Replicates On Discriminating Streptomyces") 
+
+    
+    
+    
+```
 
 
 # Boxplot Comparisons of Biological andf Technical Replicates 

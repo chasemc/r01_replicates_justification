@@ -1,0 +1,464 @@
+---
+title: "Analysis3"
+author: "Chase Clark"
+date: "January 23, 2019"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+self_contained: true
+
+
+---
+
+```{r setup, include=FALSE, }
+knitr::opts_chunk$set(echo = F, cache=TRUE)
+```
+
+
+The IDBac version used to create the SQL was:  https://github.com/chasemc/IDBacApp/commit/9c7609ade28155e165c6e4319f12b55f6108b216
+
+This can be installed via: 
+devtools::install_github("chasemc/IDBacApp@9c7609a")
+
+
+Means and standard deviations were computed by 1,000 random-sample bootstraps.
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(RSQLite)
+library(DBI)
+library(dplyr)
+library(magrittr)
+library(MALDIquant)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+```
+
+```{r}
+set.seed(42)
+```
+
+
+```{r}
+sqliteFile <- "data/r01_replicates.sqlite"
+sqliteFile <- "data/k2_calibration.sqlite"
+
+con <- DBI::dbConnect(drv = RSQLite::SQLite(),
+                      sqliteFile)
+DBI::dbListTables(con)
+```
+
+```{r}
+spectraTable <- dplyr::tbl(con, "IndividualSpectra")
+```
+
+
+
+```{r}
+spectraTable %>% 
+  filter(!is.na(proteinSpectrum)) %>% 
+  select(Strain_ID, proteinSpectrum) %>% 
+  collect %>% 
+  return(.) -> proteinSpectraTable
+
+proteinSpectraTable %>% 
+  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
+  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
+  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
+  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
+  return(.) -> proteinSpectraTable
+
+
+z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+
+proteinSpectraTable %>% 
+  mutate(proteinSpectrum = z ) -> proteinSpectraTable
+
+
+
+
+proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$proteinSpectrum, function(x){
+  
+  x@intensity <- x@intensity / max(x@intensity) *100
+  x
+})
+
+
+
+
+
+```
+
+
+
+```{r echo=FALSE}
+proteinSpectraTable$proteinSpectrum %>% 
+  MALDIquant::smoothIntensity(.,
+                              method = "SavitzkyGolay", 
+                              halfWindowSize = 20) %>% 
+  MALDIquant::removeBaseline(.,
+                             method = "TopHat") %>% 
+  MALDIquant::detectPeaks(., 
+                          method = "MAD", 
+                          halfWindowSize = 20, 
+                          SNR = 6)  %>% 
+  return(.) -> p
+
+
+p %>% 
+  MALDIquant::trim(., c(4000, 20000)) -> proteinPeaks
+
+
+
+biologicalReplicates <- paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio)
+
+groupedByBio <- split(proteinPeaks, biologicalReplicates)
+
+ids <- sapply(strsplit(names(groupedByBio), "_"), "[", 1)
+
+  # Merge technical replicates
+
+saveRDS(groupedByBio, "data/groupedByBio.rds")
+saveRDS(ids, "data/ids.rds")
+
+
+theFunc <- function(bio, tech, boot){
+
+  techReps <- tech
+  bioReps <- bio
+  
+  techSpec <- lapply(groupedByBio, 
+                     function(x){
+                       x <- sample(x, techReps)
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+  
+  
+  bioSpec <- lapply(split(techSpec, ids), 
+                     function(x){
+                       
+                       x <- sample(x, bioReps)
+                  
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "relaxed",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+
+
+
+
+binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
+
+binned <- intensityMatrix(binned)
+
+binned[is.na(binned)] <- 0
+
+binned <- 1 - coop::tcosine(binned)
+colnames(binned) <- names(bioSpec)
+diag(binned) <- NA
+
+
+
+return(cbind.data.frame(binned,
+      techReps = techReps,
+      bioReps = bioReps,
+      boot = boot
+      ))
+
+}
+
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+
+ numCores <- parallel::detectCores()
+numCores <- parallel::makeCluster(numCores - 2) #Setup cluster
+pp <- parallel::parLapply(numCores, 1:1000, function(boot) {
+  set.seed(42)
+
+library(MALDIquant)
+  groupedByBio <- readRDS("data/groupedByBio.rds")
+ ids <- readRDS("data/ids.rds")
+  a<-expand.grid(1:3, 1:12)
+  
+theFunc <- function(bio, tech, boot){
+
+  techReps <- tech
+  bioReps <- bio
+  
+  techSpec <- lapply(groupedByBio, 
+                     function(x){
+                       x <- sample(x, techReps)
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+  
+  
+  bioSpec <- lapply(split(techSpec, ids), 
+                     function(x){
+                       
+                       x <- sample(x, bioReps)
+                  
+                       x <- MALDIquant::binPeaks(x,
+                                                 method = "strict",
+                                                 tolerance = 0.002)
+                       x <- MALDIquant::filterPeaks(x, 
+                                                    minFrequency = 0.5)
+                       MALDIquant::mergeMassPeaks(x,
+                                                  method = "sum",
+                                                  ignore.na = FALSE)
+                     })
+
+
+
+
+
+
+binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
+
+binned <- intensityMatrix(binned)
+
+binned[is.na(binned)] <- 0
+
+binned <- 1 - coop::tcosine(binned)
+colnames(binned) <- names(bioSpec)
+diag(binned) <- NA
+
+
+
+return(cbind.data.frame(binned,
+      techReps = techReps,
+      bioReps = bioReps,
+      boot = boot
+      ))
+
+}
+
+
+  mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
+
+})
+
+
+
+parallel::stopCluster(numCores)
+
+saveRDS(pp, "data/1000-boots.rds")
+```
+
+```{r}
+pp <- readRDS("data/1000-boots.rds")
+zap <- do.call(rbind.data.frame, unlist(pp, recursive = F))
+
+```
+
+
+
+# Boxplot Comparisons of Biological andf Technical Replicates 
+
+This section shows the effects of 1 to 3 technical replicates at each of 12 biological replicates.
+
+Technical replicates were used to create a merged peak list at each biological replicate, then each bioligcal replicate merged.
+Peak-handling (eg binning settings) were kept the same for both technical and biological replicates. Percent peak presence was kept at 50% for both technical and biological replicates.
+
+
+The boxplots below depict each of the four isolates against each other. 
+As a reminder: 
+- B004 and A046 share 100% 16S rRNA sequence
+- A046 and A019 share 98.03% 16S rRNA sequence (29 nt)
+- 172-6 is an *Enterococcus* sp.
+See the Study Design  document for more details
+
+## B004
+
+### B004 vs A019
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A019)) -> pl
+
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) -> pl2
+
+pl$Group <-"B004 vs A019"
+
+pl2$Group <-"B004 vs A046"
+combined <- rbind(pl, pl2)
+
+combined %>%
+  mutate(cc = paste0(Group, "- ", techReps, " technical")) -> combined
+    
+
+
+ggplot(combined) + 
+  geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(cc))) +
+  coord_cartesian(ylim=c(0,1)) + 
+  labs(colour="Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                 one, " vs ", two)) +
+  coord_cartesian(ylim=c(0,.2))
+
+    
+    
+    
+```
+
+### B004 vs A046
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(A046)) %>% 
+    
+  
+  
+    ggplot() + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+
+
+### B004 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(B004)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+## A046
+
+
+### A046 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A046 vs A019
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(A019)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A046 vs B004
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(B004)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+## A019
+
+
+### A019 vs 172-6
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(`172-6`)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A019 vs A046
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(A046)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+### A019 vs B004
+
+
+```{r}
+zap %>% 
+    filter(!is.na(A019)) %>%
+    filter(is.na(B004)) %>% 
+    
+    ggplot() + 
+    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+    coord_cartesian(ylim=c(0,1))
+```
+
+
+
+
