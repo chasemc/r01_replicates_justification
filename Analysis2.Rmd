@@ -552,20 +552,7 @@ data %>%
 
 
 ```{r}
-data %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(A019)) %>% 
-    group_by(boot, techReps,bioReps) %>% 
-    summarise(mean = mean(A046)) %>% 
-    ungroup %>% 
-    group_by(techReps, bioReps) %>% 
-        summarise(sd= sd(mean), mean22 = mean(mean))
 
-
-  
-  ggplot(., aes(x=bioReps, y=mean)) + 
-  geom_point()
-  
   
 ```
 
