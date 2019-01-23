@@ -36,7 +36,6 @@ set.seed(42)
 ```
 
 
-Connect to SQLite, show available tables
 ```{r}
 sqliteFile <- "data/r01_replicates.sqlite"
 sqliteFile <- "data/k2_calibration.sqlite"
@@ -46,11 +45,9 @@ con <- DBI::dbConnect(drv = RSQLite::SQLite(),
 DBI::dbListTables(con)
 ```
 
-All raw and processed spectra, peaklists are contained in the table "IndividualSpectra" 
 ```{r}
 spectraTable <- dplyr::tbl(con, "IndividualSpectra")
 ```
-
 
 
 
@@ -270,12 +267,6 @@ parallel::stopCluster(numCores)
 saveRDS(pp, "data/1000-boots.rds")
 ```
 
-
-
-
-
-
-
 ```{r}
 pp <- readRDS("data/1000-boots.rds")
 zap <- do.call(rbind.data.frame, unlist(pp, recursive = F))
@@ -284,13 +275,24 @@ zap <- do.call(rbind.data.frame, unlist(pp, recursive = F))
 
 
 
+# Boxplot Comparisons of Biological andf Technical Replicates 
 
-# Boxplots
+This section shows the effects of 1 to 3 technical replicates at each of 12 biological replicates.
+
+Technical replicates were used to create a merged peak list at each biological replicate, then each bioligcal replicate merged.
+Peak-handling (eg binning settings) were kept the same for both technical and biological replicates. Percent peak presence was kept at 50% for both technical and biological replicates.
+
+
+The boxplots below depict each of the four isolates against each other. 
+As a reminder: 
+- B004 and A046 share 100% 16S rRNA sequence
+- A046 and A019 share 98.03% 16S rRNA sequence (29 nt)
+- 172-6 is an *Enterococcus* sp.
+See the Study Design  document for more details
 
 ## B004
 
-B004 vs A019
-
+### B004 vs A019
 
 ```{r}
 zap %>% 
@@ -302,6 +304,7 @@ zap %>%
     coord_cartesian(ylim=c(0,1))
 ```
 
+### B004 vs A046
 
 ```{r}
 zap %>% 
@@ -317,21 +320,7 @@ zap %>%
 
 
 
-B004 vs A046
-
-
-```{r}
-zap %>% 
-    filter(!is.na(B004)) %>%
-    filter(is.na(A046)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
-```
-
-
-B004 vs 172-6
+### B004 vs 172-6
 
 
 ```{r}
@@ -348,7 +337,7 @@ zap %>%
 ## A046
 
 
-A046 vs 172-6
+### A046 vs 172-6
 
 
 ```{r}
@@ -362,7 +351,7 @@ zap %>%
 ```
 
 
-A046 vs A019
+### A046 vs A019
 
 
 ```{r}
@@ -376,7 +365,7 @@ zap %>%
 ```
 
 
-A046 vs B004
+### A046 vs B004
 
 
 ```{r}
@@ -394,7 +383,7 @@ zap %>%
 ## A019
 
 
-A019 vs 172-6
+### A019 vs 172-6
 
 
 ```{r}
@@ -408,7 +397,7 @@ zap %>%
 ```
 
 
-A019 vs A046
+### A019 vs A046
 
 
 ```{r}
@@ -422,7 +411,7 @@ zap %>%
 ```
 
 
-A019 vs B004
+### A019 vs B004
 
 
 ```{r}
@@ -444,8 +433,11 @@ zap %>%
 ---
 
 
-# Deviations
+# Effect of Technical Replicates with increaing Biological Replicates (Standard Deviations)
 
+This section of the document depicts the effect of adding between 1 and 3 technical Replicates in scenarios where 1 to 12 biological replicates are included. The measurements depicted are the standard deviation of cosine similarity.
+
+*Note: It is important to remember here that at each biological replicate level, technical replicates are not additive but **multiply** the number of samples*
 
 
 
@@ -485,7 +477,7 @@ plotter <- function(data, one, two){
 
 ```
 
-
+## Effects measured against A046
 
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(grid::textGrob(""),
@@ -495,6 +487,8 @@ gridExtra::grid.arrange(grid::textGrob(""),
                         ncol=2, nrow=2)
 ```
 
+## Effects measured against B004
+
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "B004","A046"),
                         grid::textGrob(""),
@@ -503,6 +497,8 @@ gridExtra::grid.arrange(plotter(data, "B004","A046"),
                         ncol=2, nrow=2)
 ```
 
+## Effects measured against A019
+
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "A019","A046"),
                         plotter(data, "A019","B004"),
@@ -510,6 +506,8 @@ gridExtra::grid.arrange(plotter(data, "A019","A046"),
                         plotter(data, "A019","172-6"),
                         ncol=2, nrow=2)
 ```
+
+## Effects measured against 172-6
 
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "172-6","A046"),
@@ -523,19 +521,14 @@ gridExtra::grid.arrange(plotter(data, "172-6","A046"),
 
 
 
-
-
-
-
-
-
 ---
 ---
 
+# Effect of Technical Replicates with increaing Biological Replicates (Means)
 
-# Means
+This section of the document depicts the effect of adding between 1 and 3 technical Replicates in scenarios where 1 to 12 biological replicates are included. The measurements depicted are the means of cosine similarity.
 
-
+*Note: It is important to remember here that at each biological replicate level, technical replicates are not additive but **multiply** the number of samples*
 
 
 ```{r}
@@ -575,6 +568,7 @@ plotter <- function(data, one, two){
 ```
 
 
+## Effects measured against A046
 
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(grid::textGrob(""),
@@ -584,6 +578,9 @@ gridExtra::grid.arrange(grid::textGrob(""),
                         ncol=2, nrow=2)
 ```
 
+## Effects measured against B004
+
+
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "B004","A046"),
                         grid::textGrob(""),
@@ -592,6 +589,9 @@ gridExtra::grid.arrange(plotter(data, "B004","A046"),
                         ncol=2, nrow=2)
 ```
 
+## Effects measured against A019
+
+
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "A019","A046"),
                         plotter(data, "A019","B004"),
@@ -599,6 +599,9 @@ gridExtra::grid.arrange(plotter(data, "A019","A046"),
                         plotter(data, "A019","172-6"),
                         ncol=2, nrow=2)
 ```
+
+## Effects measured against 172-6
+
 
 ```{r,  fig.width=12, fig.height=12}
 gridExtra::grid.arrange(plotter(data, "172-6","A046"),
@@ -616,7 +619,12 @@ gridExtra::grid.arrange(plotter(data, "172-6","A046"),
 
 ----
 
-#Sample #
+# Evaluating the effects of increasing MALDI sample spots
+
+
+This section 
+
+In this case it looks like increasing sample spots, in general, is the most effect strategy. 
 
 
 
