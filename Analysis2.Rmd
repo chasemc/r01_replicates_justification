@@ -10,7 +10,7 @@ output:
 
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, cache=TRUE, fig.width=12}
 knitr::opts_chunk$set(echo = F)
 ```
 
@@ -27,6 +27,8 @@ library(dplyr)
 library(magrittr)
 library(MALDIquant)
 library(ggplot2)
+library(gridExtra)
+library(grid)
 ```
 
 ```{r}
@@ -436,98 +438,28 @@ zap %>%
 
 
 
-----
+
+
+---
+---
+
+
+# Deviations
 
 
 
-
-
-```{r eval=FALSE, include=FALSE}
-zap %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(B004)) %>% 
-    group_by(bioReps,techReps) %>% 
-    summarise(mean = mean(A046), standDev = sd(A046)) -> p
-
-ggplot(p) + 
-    geom_line(aes(y=A046, x=biologicalReplicates))+
-  facet_wrap(~techReps) +
-    coord_cartesian(ylim=c(0,1))
-
-```
-
-
-
-
-
-
-
-```{r}
-data <- dplyr::as.tbl(zap)
-
-
-data %>% 
-  filter(!is.na(A046)) %>%
-  filter(is.na(B004)) %>% 
-  group_by(bioReps,techReps) %>% 
-  summarise(sd= sd(A046)) %>% 
-  ungroup -> pp
-
-
-ggplot(pp) + 
-    geom_point(aes(y=sd, x=factor(bioReps), color=factor(techReps))) 
-
-```
-
-
-```{r}
-data %>% 
-  filter(!is.na(A046)) %>%
-  filter(is.na(A019)) %>% 
-  group_by(bioReps,techReps) %>% 
-  summarise(sd= sd(A046), mean = mean(A046)) %>% 
-  ungroup -> pp
-
-
-ggplot(pp) + 
-    geom_point(aes(y=sd, x=factor(bioReps), color=factor(techReps))) 
-ggplot(pp) + 
-    geom_point(aes(y=mean, x=factor(bioReps), color=factor(techReps))) +
-    coord_cartesian(ylim=c(0,1))
-```
-
-
-
-
-
-----
-
-
-
-
-```{r}
-data <- dplyr::as.tbl(zap)
-data %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(A019)) %>% 
-    group_by(techReps,bioReps) %>% 
-    summarise(sd= sd(A046), mean = mean(A046)) %>% 
-    ungroup  -> pp
-
-plot(pp)
-
-
-```
 
 ```{r}
 sub <- function(x){ x[[1]] - x[[2]]}
 
+data <- dplyr::as.tbl(zap)
+plotter <- function(data, one, two){
 
-data %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(A019)) %>% 
+  data %>% 
+    filter(!is.na(UQ(sym(one)))) %>%
+    filter(is.na(UQ(sym(two)))) %>% 
     group_by(boot, techReps,bioReps) %>% 
-    summarise(mean = mean(A046)) %>% 
+    summarise(mean = mean(UQ(sym(one)))) %>% 
     ungroup %>% 
     group_by(techReps, bioReps) %>% 
         summarise(sd= sd(mean), mean = mean(mean)) %>% 
@@ -542,18 +474,137 @@ data %>%
   labs(colour="Technical Replicates") +
   xlab("Biological Replicates") +
   ylab("Standard Deviation of Cosine Similarity") +
-  ggtitle("Effect of Technical Replication with Increasing Biological Replicates")
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                one, " vs ", two)) +
+    coord_cartesian(ylim=c(0,.2))%>% 
+    return(.) 
+}
+  
 
-  
-  
 
 
 ```
+
+
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(grid::textGrob(""),
+                        plotter(data, "A046","B004"),
+                        plotter(data, "A046","A019"),
+                        plotter(data, "A046","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "B004","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "B004","A019"),
+                        plotter(data, "B004","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "A019","A019"),
+                        plotter(data, "A019","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "A019","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "172-6","A019"),
+                        plotter(data, "172-6","A046"),
+                        plotter(data, "172-6","A019"),
+                        grid::textGrob(""),
+                        ncol=2, nrow=2)
+```
+
+
+
+
+
+
+
+
+
+
+
+---
+---
+
+
+# Means
+
+
 
 
 ```{r}
+sub <- function(x){ x[[1]] - x[[2]]}
 
+data <- dplyr::as.tbl(zap)
+plotter <- function(data, one, two){
+
+  data %>% 
+    filter(!is.na(UQ(sym(one)))) %>%
+    filter(is.na(UQ(sym(two)))) %>% 
+    group_by(boot, techReps,bioReps) %>% 
+    summarise(mean = mean(UQ(sym(one)))) %>% 
+    ungroup %>% 
+    group_by(techReps, bioReps) %>% 
+        summarise(sd= sd(mean), mean = mean(mean)) %>% 
+   
+     ggplot(data = .) + 
+  geom_point(aes(x = factor(bioReps),
+                 y = mean)) +
+  geom_line(aes(x = bioReps,
+                y = mean,
+                group = factor(techReps),
+                color = factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Standard Deviation of Cosine Similarity") +
+  ggtitle(paste0("Effect of Technical Replication with Increasing Biological Replicates \n ",
+                one, " vs ", two)) +
+    coord_cartesian(ylim=c(0,1))%>% 
+    return(.) 
+}
   
+
+
+
 ```
 
+
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(grid::textGrob(""),
+                        plotter(data, "A046","B004"),
+                        plotter(data, "A046","A019"),
+                        plotter(data, "A046","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "B004","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "B004","A019"),
+                        plotter(data, "B004","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "A019","A019"),
+                        plotter(data, "A019","A046"),
+                        grid::textGrob(""),
+                        plotter(data, "A019","172-6"),
+                        ncol=2, nrow=2)
+```
+
+```{r,  fig.width=12}
+gridExtra::grid.arrange(plotter(data, "172-6","A019"),
+                        plotter(data, "172-6","A046"),
+                        plotter(data, "172-6","A019"),
+                        grid::textGrob(""),
+                        ncol=2, nrow=2)
+```
 
