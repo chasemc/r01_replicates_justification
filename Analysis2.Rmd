@@ -526,16 +526,47 @@ sub <- function(x){ x[[1]] - x[[2]]}
 data %>% 
     filter(!is.na(A046)) %>%
     filter(is.na(A019)) %>% 
-    group_by(techReps,bioReps) %>% 
-    summarise(sd= sd(A046), mean = mean(A046)) %>%
+    group_by(boot, techReps,bioReps) %>% 
+    summarise(mean = mean(A046)) %>% 
     ungroup %>% 
-    filter(techReps %in% c(1,3)) %>%
-    group_by(bioReps) %>% 
-summarise(sub = sub(sd)) %>% 
+    group_by(techReps, bioReps) %>% 
+        summarise(sd= sd(mean), mean = mean(mean)) %>% 
+   
+     ggplot(data = .) + 
+  geom_point(aes(x = factor(bioReps),
+                 y = sd)) +
+  geom_line(aes(x = bioReps,
+                y = sd,
+                group = factor(techReps),
+                color = factor(techReps))) +
+  labs(colour="Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Standard Deviation of Cosine Similarity") +
+  ggtitle("Effect of Technical Replication with Increasing Biological Replicates")
+
   
-  ggplot(data = .) +
   
 
 
 ```
+
+
+```{r}
+data %>% 
+    filter(!is.na(A046)) %>%
+    filter(is.na(A019)) %>% 
+    group_by(boot, techReps,bioReps) %>% 
+    summarise(mean = mean(A046)) %>% 
+    ungroup %>% 
+    group_by(techReps, bioReps) %>% 
+        summarise(sd= sd(mean), mean22 = mean(mean))
+
+
+  
+  ggplot(., aes(x=bioReps, y=mean)) + 
+  geom_point()
+  
+  
+```
+
 
