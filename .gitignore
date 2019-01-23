@@ -4,3 +4,5 @@
 .Ruserdata
 data/r01_replicates.sqlite
 data/k2_calibration.sqlite
+.httr-oauth
+data/1000-boots.rds
