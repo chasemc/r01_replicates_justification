@@ -36,6 +36,7 @@ library(MALDIquant)
 library(ggplot2)
 library(gridExtra)
 library(grid)
+library(beeswarm)
 ```
 
 ```{r}
@@ -310,12 +311,28 @@ combined %>%
 
 
 ggplot(combined) + 
-    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(cc))) +
-    coord_cartesian(ylim=c(0,1)) + 
-    labs(colour="Technical Replicates") +
-    xlab("Biological Replicates") +
-    ylab("Cosine Similarity") +
-    ggtitle("The Effect of Biological and Technical Replicates On Discriminating Streptomyces") 
+  geom_boxplot(aes(y = B004,
+                   x = factor(bioReps),
+                   fill = factor(cc))) +
+  coord_cartesian(ylim = c(0, 1)) + 
+  labs(colour = "Technical Replicates") +
+  xlab("Biological Replicates") +
+  ylab("Cosine Similarity") +
+  ggtitle("The Effect of Biological and Technical Replicates On Discriminating Streptomyces") 
+
+#Beeswarm
+ggplot() +
+  geom_quasirandom(data = combined[combined$Group == "B004 vs A019", ],
+                   aes(y = B004, 
+                       x = factor(bioReps),
+                       color = factor(cc)),
+                   dodge.width = 0.5) +
+  geom_quasirandom(data = combined[combined$Group == "B004 vs A046", ],
+                   aes(y = B004,
+                       x = factor(bioReps), 
+                       color = factor(cc)), 
+                   dodge.width = 0.5)
+
 
     
     
