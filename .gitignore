@@ -7,3 +7,5 @@ data/k2_calibration.sqlite
 .httr-oauth
 data/1000-boots.rds
 Analysis_cache/html/__packages
+
+Analysis_cache/

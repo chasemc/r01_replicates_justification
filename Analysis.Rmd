@@ -36,7 +36,7 @@ library(MALDIquant)
 library(ggplot2)
 library(gridExtra)
 library(grid)
-library(beeswarm)
+library(ggbeeswarm)
 ```
 
 ```{r}
