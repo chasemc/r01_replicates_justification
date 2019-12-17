@@ -1,0 +1,44 @@
+---
+title: "01_add_data_to_package"
+author: "Chase Clark"
+date: "12/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+#devtools::install_github("jimhester/archive")
+library(here)
+```
+
+
+This part isn't needed to replicate result but is a trace of how the .7z raw data archive was created
+
+This requires 7zip to be installed. It can be found here: https://www.7-zip.org
+```{r}
+
+path_to_7zip_executable <- "C:/Program Files/7-Zip/7z"
+
+path_to_write <- file.path(here(), "data", fsep = "/")
+
+
+uncompressed_data <- "C:/Users/chase/Downloads/1-18-19"
+
+cmd <- paste0(shQuote(path_to_7zip_executable),
+              " a",
+              " -mx9 ",
+              
+              shQuote(file.path(path_to_write,
+                                "raw_data",
+                                fsep = "/")),
+              " ",
+              shQuote(uncompressed_data))
+
+system(cmd, intern = TRUE)
+
+```
+
