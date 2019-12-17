@@ -84,12 +84,13 @@ peak_data[[which(lengths(peak_data) == 3)]] <- c(peak_data[which(lengths(peak_da
 ```{r}
 lapply(peak_data, function(x){
   
+  x[]
   
   
 })
 ```
 
-
+ghkvfthghvjhvjhvjhvjhvjhvjhjkdryh
 
 ```{r echo=FALSE}
 
