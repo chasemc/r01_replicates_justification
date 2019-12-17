@@ -1,0 +1,8 @@
+base
+RSQLite
+DBI
+dplyr
+magrittr
+MALDIquant
+ggplot2
+gridExtra

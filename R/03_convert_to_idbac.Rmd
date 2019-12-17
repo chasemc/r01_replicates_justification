@@ -1,0 +1,97 @@
+---
+title: "Untitled"
+author: "Chase Clark"
+date: "12/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(here)
+library(archive)
+```
+
+```{r}
+#remotes::install_github("chasemc/IDBacApp@484e015")  
+```
+
+```{r}
+archive::archive_extract(archive = here::here("data",
+                                              "raw_data.7z"),
+                         dir = here::here("localonly")
+                         )
+```
+
+Read file created when running `02_Replicates_Study_Design`
+```{r}
+sample_map <- readRDS(here::here("data",
+                                 "replicates_plate.rds"))
+```
+
+```{r}
+bruker_dir <- here::here("localonly",
+                         "1-18-19")
+```
+
+
+```{r include=FALSE}
+acquisitionInfo <- IDBacApp::readBrukerAcqus(bruker_dir)
+acquiredSpots <- IDBacApp::findBrukerInfo(acquisitionInfo, "spot")
+
+sample_map <- as.data.frame(sample_map)
+anyMissing <- IDBacApp::findMissingSampleMapIds(acquiredSpots,
+                                                as.data.frame(sample_map))
+
+
+splitAcquisition <- split(acquisitionInfo, anyMissing$matching)
+
+files <- lapply(splitAcquisition, function(x){
+  lapply(x, function(y) y$file)
+})
+
+
+```
+
+
+
+Convert to mzML
+
+```{r echo=FALSE}
+
+tempMZDir <- tempdir()
+
+forProcessing <- IDBacApp::proteoWizConvert(msconvertPath = "",
+                                            samplePathList = files,
+                                            convertWhere = tempMZDir)
+forProcessing
+```
+
+
+
+```{r include=FALSE}
+sqlite_dir <- here::here("data/sqlite")
+
+dir.create(sqlite_dir)
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+userDBpool <- IDBacApp::createNewSQLITEdb(newExperimentName = "replicate_study",
+                                          sqlDirectory = sqlite_dir)[[1]]
+
+
+for (i in base::seq_along(forProcessing$mzFile)) {
+  IDBacApp::spectraProcessingFunction(rawDataFilePath = forProcessing$mzFile[[i]],
+                                      sampleID = forProcessing$sampleID[[i]],
+                                      userDBCon = userDBpool,                                      acquisitionInfo = splitAcquisition[[i]]) # pool connection
+}
+
+
+pool::poolClose(userDBpool)
+
+```

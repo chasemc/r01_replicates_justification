@@ -8,8 +8,6 @@ output:
     toc_depth: 3
     toc_float: true
 self_contained: true
-
-
 ---
 
 ```{r setup, include=FALSE, }
@@ -44,96 +42,61 @@ set.seed(42)
 
 
 ```{r}
-sqliteFile <- "data/r01_replicates.sqlite"
-sqliteFile <- "data/k2_calibration.sqlite"
+con <- IDBacApp::createPool(fileName = "replicate_study", 
+                            filePath = here::here("data",
+                                                  "sqlite"))[[1]]
 
-con <- DBI::dbConnect(drv = RSQLite::SQLite(),
-                      sqliteFile)
 DBI::dbListTables(con)
 ```
 
+
+Get the spcetra data
 ```{r}
-spectraTable <- dplyr::tbl(con, "IndividualSpectra")
+spectraTable <- dplyr::tbl(con, "IndividualSpectra") %>% collect()
 ```
 
 
 
+
+Get all peak data. In the the sample map technical replicates share the same name as the biological replicate.  That means  `IDBacApp::getPeakData` will return a list of lists of MALDIquant objects, where each element of the top list is a biological replicate that contains a list of technical replicate MALDIquant objects. Because this is confusing I will show the first two elements of the output...
+
+`172-6_1` and `172-6_10` are biological replicates `1` and `10` of strain `172-6`. Each of these two biological replicates contains four technical replicates.
+
 ```{r}
-spectraTable %>% 
-  filter(!is.na(proteinSpectrum)) %>% 
-  select(Strain_ID, proteinSpectrum) %>% 
-  collect %>% 
-  return(.) -> proteinSpectraTable
-
-proteinSpectraTable %>% 
-  mutate(Strain_ID, Strain = sapply(strsplit(Strain_ID, "_"), "[", 1)) %>% 
-  mutate(Strain_ID, Bio = sapply(strsplit(Strain_ID, "_"), "[", 3)) %>%
-  mutate(Strain_ID, Tech = sapply(strsplit(Strain_ID, "_"), "[", 5)) %>%
-  filter(Strain %in% c("A019","A046", "B004", "172-6")) %>% 
-  return(.) -> proteinSpectraTable
+peak_data <- IDBacApp::getPeakData(con, 
+                       sampleIDs = unique(spectraTable$Strain_ID),
+                     protein = T) 
 
 
-z<- unlist(lapply(proteinSpectraTable$proteinSpectrum, function(x) unserialize(memDecompress(x, type= "gzip"))))
+peak_data <- lapply(peak_data, function(x) MALDIquant::trim(x, c(4000, 20000)))
 
-proteinSpectraTable %>% 
-  mutate(proteinSpectrum = z ) -> proteinSpectraTable
-
-
+peak_data[1:2]
+```
 
 
-proteinSpectraTable$proteinSpectrum <- lapply(proteinSpectraTable$proteinSpectrum, function(x){
+Not a good thing to do but a single biological replicate is missing a sample, here one will be copied as a fourth
+
+```{r}
+peak_data[[which(lengths(peak_data) == 3)]] <- c(peak_data[which(lengths(peak_data) == 3)], peak_data[which(lengths(peak_data) == 3)][[1]])
+```
+
+
+```{r}
+lapply(peak_data, function(x){
   
-  x@intensity <- x@intensity / max(x@intensity) *100
-  x
+  
+  
 })
-
-
-
-
-
 ```
 
 
 
 ```{r echo=FALSE}
-proteinSpectraTable$proteinSpectrum %>% 
-  MALDIquant::smoothIntensity(.,
-                              method = "SavitzkyGolay", 
-                              halfWindowSize = 20) %>% 
-  MALDIquant::removeBaseline(.,
-                             method = "TopHat") %>% 
-  MALDIquant::detectPeaks(., 
-                          method = "MAD", 
-                          halfWindowSize = 20, 
-                          SNR = 6)  %>% 
-  return(.) -> p
-
-
-p %>% 
-  MALDIquant::trim(., c(4000, 20000)) -> proteinPeaks
-
-
-
-biologicalReplicates <- paste0(proteinSpectraTable$Strain, "_", proteinSpectraTable$Bio)
-
-groupedByBio <- split(proteinPeaks, biologicalReplicates)
-
-ids <- sapply(strsplit(names(groupedByBio), "_"), "[", 1)
-
-  # Merge technical replicates
-
-saveRDS(groupedByBio, "data/groupedByBio.rds")
-saveRDS(ids, "data/ids.rds")
-
 
 theFunc <- function(bio, tech, boot){
-
-  techReps <- tech
-  bioReps <- bio
   
-  techSpec <- lapply(groupedByBio, 
+  techSpec <- lapply(peak_data, 
                      function(x){
-                       x <- sample(x, techReps)
                        x <- MALDIquant::binPeaks(x,
                                                  method = "strict",
                                                  tolerance = 0.002)
@@ -143,48 +106,48 @@ theFunc <- function(bio, tech, boot){
                                                   method = "sum",
                                                   ignore.na = FALSE)
                      })
-
-
+  
+  
   
   
   bioSpec <- lapply(split(techSpec, ids), 
-                     function(x){
-                       
-                       x <- sample(x, bioReps)
-                  
-                       x <- MALDIquant::binPeaks(x,
-                                                 method = "relaxed",
-                                                 tolerance = 0.002)
-                       x <- MALDIquant::filterPeaks(x, 
-                                                    minFrequency = 0.5)
-                       MALDIquant::mergeMassPeaks(x,
-                                                  method = "sum",
-                                                  ignore.na = FALSE)
-                     })
-
-
-
-
-
-
-binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
-
-binned <- intensityMatrix(binned)
-
-binned[is.na(binned)] <- 0
-
-binned <- 1 - coop::tcosine(binned)
-colnames(binned) <- names(bioSpec)
-diag(binned) <- NA
-
-
-
-return(cbind.data.frame(binned,
-      techReps = techReps,
-      bioReps = bioReps,
-      boot = boot
-      ))
-
+                    function(x){
+                      
+                      x <- sample(x, bioReps)
+                      
+                      x <- MALDIquant::binPeaks(x,
+                                                method = "relaxed",
+                                                tolerance = 0.002)
+                      x <- MALDIquant::filterPeaks(x, 
+                                                   minFrequency = 0.5)
+                      MALDIquant::mergeMassPeaks(x,
+                                                 method = "sum",
+                                                 ignore.na = FALSE)
+                    })
+  
+  
+  
+  
+  
+  
+  binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
+  
+  binned <- intensityMatrix(binned)
+  
+  binned[is.na(binned)] <- 0
+  
+  binned <- 1 - coop::tcosine(binned)
+  colnames(binned) <- names(bioSpec)
+  diag(binned) <- NA
+  
+  
+  
+  return(cbind.data.frame(binned,
+                          techReps = techReps,
+                          bioReps = bioReps,
+                          boot = boot
+  ))
+  
 }
 
 
@@ -193,81 +156,23 @@ return(cbind.data.frame(binned,
 ```{r eval=FALSE, include=FALSE}
 
 
- numCores <- parallel::detectCores()
+numCores <- parallel::detectCores()
 numCores <- parallel::makeCluster(numCores - 2) #Setup cluster
-pp <- parallel::parLapply(numCores, 1:1000, function(boot) {
-  set.seed(42)
-
-library(MALDIquant)
-  groupedByBio <- readRDS("data/groupedByBio.rds")
- ids <- readRDS("data/ids.rds")
-  a<-expand.grid(1:3, 1:12)
-  
-theFunc <- function(bio, tech, boot){
-
-  techReps <- tech
-  bioReps <- bio
-  
-  techSpec <- lapply(groupedByBio, 
-                     function(x){
-                       x <- sample(x, techReps)
-                       x <- MALDIquant::binPeaks(x,
-                                                 method = "strict",
-                                                 tolerance = 0.002)
-                       x <- MALDIquant::filterPeaks(x, 
-                                                    minFrequency = 0.5)
-                       MALDIquant::mergeMassPeaks(x,
-                                                  method = "sum",
-                                                  ignore.na = FALSE)
-                     })
-
-
-  
-  
-  bioSpec <- lapply(split(techSpec, ids), 
-                     function(x){
-                       
-                       x <- sample(x, bioReps)
-                  
-                       x <- MALDIquant::binPeaks(x,
-                                                 method = "strict",
-                                                 tolerance = 0.002)
-                       x <- MALDIquant::filterPeaks(x, 
-                                                    minFrequency = 0.5)
-                       MALDIquant::mergeMassPeaks(x,
-                                                  method = "sum",
-                                                  ignore.na = FALSE)
-                     })
-
-
-
-
-
-
-binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
-
-binned <- intensityMatrix(binned)
-
-binned[is.na(binned)] <- 0
-
-binned <- 1 - coop::tcosine(binned)
-colnames(binned) <- names(bioSpec)
-diag(binned) <- NA
-
-
-
-return(cbind.data.frame(binned,
-      techReps = techReps,
-      bioReps = bioReps,
-      boot = boot
-      ))
-
-}
-
-
-  mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
-
-})
+pp <- parallel::parLapply(numCores, 1:1000, 
+                          function(boot) {
+                            set.seed(42)
+                            
+                            library(MALDIquant)
+                            groupedByBio <- readRDS("data/groupedByBio.rds")
+                            ids <- readRDS("data/ids.rds")
+                            a<-expand.grid(1:3, 1:12)
+                            
+                         
+                            
+                            
+                            mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
+                            
+                          })
 
 
 
@@ -305,12 +210,12 @@ See the Study Design  document for more details
 
 ```{r}
 zap %>% 
-    filter(!is.na(B004)) %>%
-    filter(is.na(A019)) -> pl
+  filter(!is.na(B004)) %>%
+  filter(is.na(A019)) -> pl
 
 zap %>% 
-    filter(!is.na(B004)) %>%
-    filter(is.na(A046)) -> pl2
+  filter(!is.na(B004)) %>%
+  filter(is.na(A046)) -> pl2
 
 pl$Group <-"B004 vs A019"
 
@@ -319,7 +224,7 @@ combined <- rbind(pl, pl2)
 
 combined %>%
   mutate(cc = paste0(Group, "- ", techReps, " technical")) -> combined
-    
+
 
 
 ggplot(combined) + 
@@ -332,23 +237,23 @@ ggplot(combined) +
                  one, " vs ", two)) +
   coord_cartesian(ylim=c(0,.2))
 
-    
-    
-    
+
+
+
 ```
 
 ### B004 vs A046
 
 ```{r}
 zap %>% 
-    filter(!is.na(B004)) %>%
-    filter(is.na(A046)) %>% 
-    
+  filter(!is.na(B004)) %>%
+  filter(is.na(A046)) %>% 
   
   
-    ggplot() + 
-    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  
+  ggplot() + 
+  geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -360,12 +265,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(B004)) %>%
-    filter(is.na(`172-6`)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(B004)) %>%
+  filter(is.na(`172-6`)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=B004, x=factor(bioReps),fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -377,12 +282,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(`172-6`)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A046)) %>%
+  filter(is.na(`172-6`)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -391,12 +296,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(A019)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A046)) %>%
+  filter(is.na(A019)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -405,12 +310,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A046)) %>%
-    filter(is.na(B004)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A046)) %>%
+  filter(is.na(B004)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A046, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -423,12 +328,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A019)) %>%
-    filter(is.na(`172-6`)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A019)) %>%
+  filter(is.na(`172-6`)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -437,12 +342,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A019)) %>%
-    filter(is.na(A046)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A019)) %>%
+  filter(is.na(A046)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
@@ -451,12 +356,12 @@ zap %>%
 
 ```{r}
 zap %>% 
-    filter(!is.na(A019)) %>%
-    filter(is.na(B004)) %>% 
-    
-    ggplot() + 
-    geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
-    coord_cartesian(ylim=c(0,1))
+  filter(!is.na(A019)) %>%
+  filter(is.na(B004)) %>% 
+  
+  ggplot() + 
+  geom_boxplot(aes(y=A019, x=factor(bioReps), fill=factor(techReps)))+
+  coord_cartesian(ylim=c(0,1))
 ```
 
 
