@@ -64,96 +64,150 @@ Get all peak data. In the the sample map technical replicates share the same nam
 
 ```{r}
 peak_data <- IDBacApp::getPeakData(con, 
-                       sampleIDs = unique(spectraTable$Strain_ID),
-                     protein = T) 
+                                   sampleIDs = unique(spectraTable$Strain_ID),
+                                   protein = T) 
+
+minSNR <- 6
+ peak_data <- lapply(peak_data, function(temp){
+    
+    for (i in 1:length(temp)) {
+      snr1 <-  which(MALDIquant::snr(temp[[i]]) >= minSNR)
+      temp[[i]]@mass <- temp[[i]]@mass[snr1]
+      temp[[i]]@snr <- temp[[i]]@snr[snr1]
+      temp[[i]]@intensity <- temp[[i]]@intensity[snr1]
+    }
+   temp
+ })
+   
+peak_data <- lapply(peak_data, function(x) MALDIquant::trim(x, c(3000, 15000)))
 
 
-peak_data <- lapply(peak_data, function(x) MALDIquant::trim(x, c(4000, 20000)))
+#peak_data
 
-peak_data[1:2]
+#peak_data[1:2]
 ```
 
 
 Not a good thing to do but a single biological replicate is missing a sample, here one will be copied as a fourth
 
 ```{r}
-peak_data[[which(lengths(peak_data) == 3)]] <- c(peak_data[which(lengths(peak_data) == 3)], peak_data[which(lengths(peak_data) == 3)][[1]])
+peak_data[[which(lengths(peak_data) == 3)]] <- c(peak_data[[which(lengths(peak_data) == 3)]], peak_data[[which(lengths(peak_data) == 3)]][[1]])
 ```
 
 
+
+
+The below function will pull a random technical replicate and reandom biological replicate given the desired number of each.
 ```{r}
-lapply(peak_data, function(x){
-  
-  x[]
-  
-  
-})
-```
 
-ghkvfthghvjhvjhvjhvjhvjhvjhjkdryh
-
-```{r echo=FALSE}
-
-theFunc <- function(bio, tech, boot){
-  
-  techSpec <- lapply(peak_data, 
-                     function(x){
-                       x <- MALDIquant::binPeaks(x,
-                                                 method = "strict",
-                                                 tolerance = 0.002)
-                       x <- MALDIquant::filterPeaks(x, 
-                                                    minFrequency = 0.5)
-                       MALDIquant::mergeMassPeaks(x,
-                                                  method = "sum",
-                                                  ignore.na = FALSE)
-                     })
-  
-  
-  
-  
-  bioSpec <- lapply(split(techSpec, ids), 
-                    function(x){
-                      
-                      x <- sample(x, bioReps)
-                      
-                      x <- MALDIquant::binPeaks(x,
-                                                method = "relaxed",
-                                                tolerance = 0.002)
-                      x <- MALDIquant::filterPeaks(x, 
-                                                   minFrequency = 0.5)
-                      MALDIquant::mergeMassPeaks(x,
-                                                 method = "sum",
-                                                 ignore.na = FALSE)
-                    })
-  
-  
-  
-  
-  
-  
-  binned <- MALDIquant::binPeaks(bioSpec, tolerance = .002)
-  
-  binned <- intensityMatrix(binned)
-  
-  binned[is.na(binned)] <- 0
-  
-  binned <- 1 - coop::tcosine(binned)
-  colnames(binned) <- names(bioSpec)
-  diag(binned) <- NA
-  
-  
-  
-  return(cbind.data.frame(binned,
-                          techReps = techReps,
-                          bioReps = bioReps,
-                          boot = boot
-  ))
-  
+get_replicates <- function(peak_data,
+                           sample_names,
+                           bio_rep,
+                           tech_rep) {
+  lapply(sample_names, 
+         function(name){
+           y <-  peak_data[grep(name, names(peak_data))][sample(1:12, bio_rep)]
+           y <- lapply(y, function(y) y[sample(1:4, tech_rep)])
+           y
+         })
 }
 
 
+
 ```
 
+
+
+```{r}
+
+merge_tech_replicates <- function(z, 
+                                  filter = NULL){
+  lapply(z,
+               function(x){
+                 
+                 lapply(x, 
+                        function(y){
+                          y <- MALDIquant::binPeaks(y,
+                                                    method = "relaxed",
+                                                    tolerance = 0.002)
+                          if(!is.null(filter)) {
+                          y <- MALDIquant::filterPeaks(y, 
+                                                       minFrequency = filter)
+                          }
+                          MALDIquant::mergeMassPeaks(y,
+                                                     method = "mean",
+                                                     ignore.na = FALSE)
+                        })
+               })
+}
+  
+```
+  
+   
+```{r}
+merge_bio_replicates <- function(z, 
+                                  filter = NULL){
+ 
+                 
+                 lapply(z, 
+                        function(y){
+                          y <- MALDIquant::binPeaks(y,
+                                                    method = "relaxed",
+                                                    tolerance = 0.2)
+                          if(!is.null(filter)) {
+                          y <- MALDIquant::filterPeaks(y, 
+                                                       minFrequency = filter)
+                          }
+                          MALDIquant::mergeMassPeaks(y,
+                                                     method = "mean",
+                                                     ignore.na = FALSE)
+                        })
+              
+}
+```
+
+  
+  
+  
+```{r}
+z <- get_replicates(peak_data = peak_data,
+                    sample_names = c("172-6", "A019", "A046", "B004"),
+                    bio_rep = 6 ,
+                    tech_rep = 3)
+
+lapply(z, function(x){
+
+b <- IDBacApp::createFuzzyVector(massStart = 3000,
+                            massEnd = 16000, 
+                            ppm = 500, 
+                            massList = lapply(unlist(z), function(x)x@mass), 
+                            intensityList = lapply(unlist(z), function(x)x@intensity))
+colnames(b)<-c("172-6", "A019", "A046", "B004")
+
+b <- 1 - coop::cosine(b)
+
+})
+
+
+```
+  
+ 
+```{r}
+
+z <- merge_tech_replicates(z)
+
+
+z <- merge_bio_replicates(z)
+
+
+```
+  
+  
+```{r}
+
+
+```
+  
 ```{r eval=FALSE, include=FALSE}
 
 
@@ -168,7 +222,7 @@ pp <- parallel::parLapply(numCores, 1:1000,
                             ids <- readRDS("data/ids.rds")
                             a<-expand.grid(1:3, 1:12)
                             
-                         
+                            
                             
                             
                             mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
