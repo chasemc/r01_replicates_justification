@@ -279,10 +279,25 @@ pp <- parallel::parLapply(numCores, 1:2,
                                      distance = b,
                                      vect = b[lower.tri(b)])
                               })
-                              zz
+                              
+                               zz2 <- merge_bio_replicates(z)
+                                
+                                zz2 <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                                                 massEnd = 16000, 
+                                                                 ppm = 500, 
+                                                                 massList = lapply(zz2, function(x)x@mass), 
+                                                                 intensityList = lapply(zz2, function(x)x@intensity))
+                                b <- 1 - coop::cosine(zz2)
+                                
+                              
+                              
+                              list(intra = zz,
+                                   inter =  b)
+                              
+                              
                             },
                             x= comb$Var1,
-                            y = comb$Var2)
+                            y = comb$Var2, SIMPLIFY = T)
                           })
 
 parallel::stopCluster(numCores)
@@ -292,7 +307,7 @@ parallel::stopCluster(numCores)
 
 
 ```{r}
-ii<-2
+ii<-1
 
 yo <- do.call(rbind, lapply(seq_along(pp[[1]][ii,]), function(x) cbind.data.frame(pp[[1]][ii,][[x]]$vect,
                                       pp[[1]][ii,][[x]]$strain,
