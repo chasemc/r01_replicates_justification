@@ -140,11 +140,6 @@ merge_tech_replicates <- function(z,
                   })
          })
 }
-
-```
-
-
-```{r}
 merge_bio_replicates <- function(z, 
                                  filter = NULL){
   
@@ -164,6 +159,23 @@ merge_bio_replicates <- function(z,
          })
   
 }
+
+```
+
+
+
+
+
+```{r}
+
+```
+
+
+```{r}
+
+saveRDS(peak_data,
+        here::here("localonly",
+                   "peak_data.rds"))
 ```
 
 
@@ -171,76 +183,162 @@ merge_bio_replicates <- function(z,
 
 ```{r}
 
-p <- function(bio_rep,
-              tech_rep){
-  
-  z <- get_replicates(peak_data = peak_data,
-                      sample_names = c("172-6", "A019", "A046", "B004"),
-                      bio_rep = 6 ,
-                      tech_rep = 3)
-  
-  
-  
-  z <- merge_tech_replicates(z, 
-                             filter = NULL)
-  
-  
-  
-  
-  zz <- lapply(z, function(x){
-    
-    b <- IDBacApp::createFuzzyVector(massStart = 3000,
-                                     massEnd = 16000, 
-                                     ppm = 500, 
-                                     massList = lapply(unlist(x), function(x)x@mass), 
-                                     intensityList = lapply(unlist(x), function(x)x@intensity))
-    b <- 1 - coop::cosine(b)
-    list(distance = b,
-         vect = b[lower.tri(b)])
-  })
-  zz
-}
+
+
+
+
+numCores <- parallel::detectCores()
+numCores <- parallel::makeCluster(numCores) 
+
+pp <- parallel::parLapply(numCores, 1:2, 
+                          function(i) {
+                            set.seed(i)
+                            peak_data <- readRDS(here::here("localonly",
+                                                            "peak_data.rds"))
+                            comb <-  expand.grid(1:12, 1:4)
+                            
+                            
+                            get_replicates <- function(peak_data,
+                                                       sample_names,
+                                                       bio_rep,
+                                                       tech_rep) {
+                              lapply(sample_names, 
+                                     function(name){
+                                       y <-  peak_data[grep(name, names(peak_data))][sample(1:12, bio_rep)]
+                                       y <- lapply(y, function(y) y[sample(1:4, tech_rep)])
+                                       y
+                                     })
+                            }
+                            
+                            merge_tech_replicates <- function(z, 
+                                                              filter = NULL){
+                              lapply(z,
+                                     function(x){
+                                       
+                                       lapply(x, 
+                                              function(y){
+                                                y <- MALDIquant::binPeaks(y,
+                                                                          method = "relaxed",
+                                                                          tolerance = 0.002)
+                                                if(!is.null(filter)) {
+                                                  y <- MALDIquant::filterPeaks(y, 
+                                                                               minFrequency = filter)
+                                                }
+                                                MALDIquant::mergeMassPeaks(y,
+                                                                           method = "mean",
+                                                                           ignore.na = FALSE)
+                                              })
+                                     })
+                            }
+                            merge_bio_replicates <- function(z, 
+                                                             filter = NULL){
+                              
+                              
+                              lapply(z, 
+                                     function(y){
+                                       y <- MALDIquant::binPeaks(y,
+                                                                 method = "relaxed",
+                                                                 tolerance = 0.2)
+                                       if(!is.null(filter)) {
+                                         y <- MALDIquant::filterPeaks(y, 
+                                                                      minFrequency = filter)
+                                       }
+                                       MALDIquant::mergeMassPeaks(y,
+                                                                  method = "mean",
+                                                                  ignore.na = FALSE)
+                                     })
+                              
+                            }
+                            
+                            
+                            mapply(function(x,
+                                            y){
+                              
+                              z <- get_replicates(peak_data = peak_data,
+                                                  sample_names = c("172-6", "A019", "A046", "B004"),
+                                                  bio_rep = 6 ,
+                                                  tech_rep = 3)
+                              
+                              
+                              
+                              z <- merge_tech_replicates(z, 
+                                                         filter = NULL)
+                              
+                              
+                              
+                              
+                              zz <- lapply(z, function(x){
+                                
+                                b <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                                                 massEnd = 16000, 
+                                                                 ppm = 500, 
+                                                                 massList = lapply(unlist(x), function(x)x@mass), 
+                                                                 intensityList = lapply(unlist(x), function(x)x@intensity))
+                                b <- 1 - coop::cosine(b)
+                                list(strain = strsplit(names(x)[[1]], "_")[[1]][[1]],
+                                     distance = b,
+                                     vect = b[lower.tri(b)])
+                              })
+                              zz
+                            },
+                            x= comb$Var1,
+                            y = comb$Var2)
+                          })
+
+parallel::stopCluster(numCores)
 ```
+
 
 
 
 ```{r}
-comb <-  expand.grid(1:12, 1:4)
-comb<-comb[order(comb[,1]),]
-zp <- mapply( function(x,
-              y){
-  
-  z <- get_replicates(peak_data = peak_data,
-                      sample_names = c("172-6", "A019", "A046", "B004"),
-                      bio_rep = 6 ,
-                      tech_rep = 3)
-  
-  
-  
-  z <- merge_tech_replicates(z, 
-                             filter = NULL)
-  
-  
-  
-  
-  zz <- lapply(z, function(x){
-    
-    b <- IDBacApp::createFuzzyVector(massStart = 3000,
-                                     massEnd = 16000, 
-                                     ppm = 500, 
-                                     massList = lapply(unlist(x), function(x)x@mass), 
-                                     intensityList = lapply(unlist(x), function(x)x@intensity))
-    b <- 1 - coop::cosine(b)
-    list(distance = b,
-         vect = b[lower.tri(b)])
-  })
-  zz
-},
-             x= comb$Var1,
-             y = comb$Var2)
+ii<-2
+
+yo <- do.call(rbind, lapply(seq_along(pp[[1]][ii,]), function(x) cbind.data.frame(pp[[1]][ii,][[x]]$vect,
+                                      pp[[1]][ii,][[x]]$strain,
+                                      x)))
+colnames(yo) <- c("cosine", "strain", "iter")
+
+yo <- cbind(yo, comb[match(yo$iter, rownames(comb)), ])
+
+colnames(yo) <- c("cosine", "strain", "iter", "bio", "tech")
 
 ```
 
+
+
+
+```{r}
+ggplot(yo) + 
+    geom_violin(aes(y=cosine, x=factor(tech))) + 
+    facet_wrap(~bio, ncol = 12) + 
+    coord_cartesian(ylim = c(0,1))
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+a <-  lapply((pp, function(x){
+  
+  
+  
+cbind(do.call(rbind,   lapply(1:2, function(x) cbind(pp[[x]][[i]]$vect, x))), i)
+  
+  
+  })
+a <- do.call(rbind, a)
+
+colnames(a) <- c("cosine", "iter", "biorep")
+
+
+```
 
 
 
