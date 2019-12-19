@@ -68,17 +68,17 @@ peak_data <- IDBacApp::getPeakData(con,
                                    protein = T) 
 
 minSNR <- 6
- peak_data <- lapply(peak_data, function(temp){
-    
-    for (i in 1:length(temp)) {
-      snr1 <-  which(MALDIquant::snr(temp[[i]]) >= minSNR)
-      temp[[i]]@mass <- temp[[i]]@mass[snr1]
-      temp[[i]]@snr <- temp[[i]]@snr[snr1]
-      temp[[i]]@intensity <- temp[[i]]@intensity[snr1]
-    }
-   temp
- })
-   
+peak_data <- lapply(peak_data, function(temp){
+  
+  for (i in 1:length(temp)) {
+    snr1 <-  which(MALDIquant::snr(temp[[i]]) >= minSNR)
+    temp[[i]]@mass <- temp[[i]]@mass[snr1]
+    temp[[i]]@snr <- temp[[i]]@snr[snr1]
+    temp[[i]]@intensity <- temp[[i]]@intensity[snr1]
+  }
+  temp
+})
+
 peak_data <- lapply(peak_data, function(x) MALDIquant::trim(x, c(3000, 15000)))
 
 
@@ -123,118 +123,132 @@ get_replicates <- function(peak_data,
 merge_tech_replicates <- function(z, 
                                   filter = NULL){
   lapply(z,
-               function(x){
-                 
-                 lapply(x, 
-                        function(y){
-                          y <- MALDIquant::binPeaks(y,
-                                                    method = "relaxed",
-                                                    tolerance = 0.002)
-                          if(!is.null(filter)) {
-                          y <- MALDIquant::filterPeaks(y, 
-                                                       minFrequency = filter)
-                          }
-                          MALDIquant::mergeMassPeaks(y,
-                                                     method = "mean",
-                                                     ignore.na = FALSE)
-                        })
-               })
+         function(x){
+           
+           lapply(x, 
+                  function(y){
+                    y <- MALDIquant::binPeaks(y,
+                                              method = "relaxed",
+                                              tolerance = 0.002)
+                    if(!is.null(filter)) {
+                      y <- MALDIquant::filterPeaks(y, 
+                                                   minFrequency = filter)
+                    }
+                    MALDIquant::mergeMassPeaks(y,
+                                               method = "mean",
+                                               ignore.na = FALSE)
+                  })
+         })
 }
-  
+
 ```
-  
-   
+
+
 ```{r}
 merge_bio_replicates <- function(z, 
-                                  filter = NULL){
- 
-                 
-                 lapply(z, 
-                        function(y){
-                          y <- MALDIquant::binPeaks(y,
-                                                    method = "relaxed",
-                                                    tolerance = 0.2)
-                          if(!is.null(filter)) {
-                          y <- MALDIquant::filterPeaks(y, 
-                                                       minFrequency = filter)
-                          }
-                          MALDIquant::mergeMassPeaks(y,
-                                                     method = "mean",
-                                                     ignore.na = FALSE)
-                        })
-              
+                                 filter = NULL){
+  
+  
+  lapply(z, 
+         function(y){
+           y <- MALDIquant::binPeaks(y,
+                                     method = "relaxed",
+                                     tolerance = 0.2)
+           if(!is.null(filter)) {
+             y <- MALDIquant::filterPeaks(y, 
+                                          minFrequency = filter)
+           }
+           MALDIquant::mergeMassPeaks(y,
+                                      method = "mean",
+                                      ignore.na = FALSE)
+         })
+  
 }
 ```
 
-  
-  
-  
-```{r}
-z <- get_replicates(peak_data = peak_data,
-                    sample_names = c("172-6", "A019", "A046", "B004"),
-                    bio_rep = 6 ,
-                    tech_rep = 3)
-
-lapply(z, function(x){
-
-b <- IDBacApp::createFuzzyVector(massStart = 3000,
-                            massEnd = 16000, 
-                            ppm = 500, 
-                            massList = lapply(unlist(z), function(x)x@mass), 
-                            intensityList = lapply(unlist(z), function(x)x@intensity))
-colnames(b)<-c("172-6", "A019", "A046", "B004")
-
-b <- 1 - coop::cosine(b)
-
-})
 
 
-```
-  
- 
+
 ```{r}
 
-z <- merge_tech_replicates(z)
-
-
-z <- merge_bio_replicates(z)
-
-
+p <- function(bio_rep,
+              tech_rep){
+  
+  z <- get_replicates(peak_data = peak_data,
+                      sample_names = c("172-6", "A019", "A046", "B004"),
+                      bio_rep = 6 ,
+                      tech_rep = 3)
+  
+  
+  
+  z <- merge_tech_replicates(z, 
+                             filter = NULL)
+  
+  
+  
+  
+  zz <- lapply(z, function(x){
+    
+    b <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                     massEnd = 16000, 
+                                     ppm = 500, 
+                                     massList = lapply(unlist(x), function(x)x@mass), 
+                                     intensityList = lapply(unlist(x), function(x)x@intensity))
+    b <- 1 - coop::cosine(b)
+    list(distance = b,
+         vect = b[lower.tri(b)])
+  })
+  zz
+}
 ```
-  
-  
+
+
+
 ```{r}
-
-
-```
+comb <-  expand.grid(1:12, 1:4)
+comb<-comb[order(comb[,1]),]
+zp <- mapply( function(x,
+              y){
   
-```{r eval=FALSE, include=FALSE}
+  z <- get_replicates(peak_data = peak_data,
+                      sample_names = c("172-6", "A019", "A046", "B004"),
+                      bio_rep = 6 ,
+                      tech_rep = 3)
+  
+  
+  
+  z <- merge_tech_replicates(z, 
+                             filter = NULL)
+  
+  
+  
+  
+  zz <- lapply(z, function(x){
+    
+    b <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                     massEnd = 16000, 
+                                     ppm = 500, 
+                                     massList = lapply(unlist(x), function(x)x@mass), 
+                                     intensityList = lapply(unlist(x), function(x)x@intensity))
+    b <- 1 - coop::cosine(b)
+    list(distance = b,
+         vect = b[lower.tri(b)])
+  })
+  zz
+},
+             x= comb$Var1,
+             y = comb$Var2)
 
-
-numCores <- parallel::detectCores()
-numCores <- parallel::makeCluster(numCores - 2) #Setup cluster
-pp <- parallel::parLapply(numCores, 1:1000, 
-                          function(boot) {
-                            set.seed(42)
-                            
-                            library(MALDIquant)
-                            groupedByBio <- readRDS("data/groupedByBio.rds")
-                            ids <- readRDS("data/ids.rds")
-                            a<-expand.grid(1:3, 1:12)
-                            
-                            
-                            
-                            
-                            mapply(theFunc, bio = a$Var2, tech = a$Var1, boot = boot,  SIMPLIFY = FALSE)
-                            
-                          })
-
-
-
-parallel::stopCluster(numCores)
-
-saveRDS(pp, "data/1000-boots.rds")
 ```
+
+
+
+
+
+
+
+
+
 
 ```{r}
 pp <- readRDS("data/1000-boots.rds")
