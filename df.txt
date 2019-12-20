@@ -1,0 +1,120 @@
+starting worker pid=230404 on localhost:11905 at 11:01:23.235
+starting worker pid=91332 on localhost:11905 at 11:01:23.504
+starting worker pid=53960 on localhost:11905 at 11:01:23.795
+starting worker pid=78276 on localhost:11905 at 11:01:24.059
+starting worker pid=69128 on localhost:11905 at 11:01:24.340
+starting worker pid=6872 on localhost:11905 at 11:01:24.594
+starting worker pid=155088 on localhost:11905 at 11:04:43.754
+starting worker pid=219292 on localhost:11905 at 11:04:44.010
+starting worker pid=148672 on localhost:11905 at 11:04:44.256
+starting worker pid=126496 on localhost:11905 at 11:04:44.515
+starting worker pid=188084 on localhost:11905 at 11:04:44.762
+starting worker pid=198708 on localhost:11905 at 11:04:45.043
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+starting worker pid=5360 on localhost:11292 at 11:14:45.598
+starting worker pid=2076 on localhost:11292 at 11:14:45.861
+starting worker pid=1508 on localhost:11292 at 11:14:46.127
+starting worker pid=3380 on localhost:11292 at 11:14:46.413
+starting worker pid=9156 on localhost:11292 at 11:14:46.664
+starting worker pid=2540 on localhost:11292 at 11:14:46.935
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+starting worker pid=1584 on localhost:11165 at 11:19:18.349
+starting worker pid=2456 on localhost:11165 at 11:19:18.606
+starting worker pid=6156 on localhost:11165 at 11:19:18.847
+starting worker pid=5380 on localhost:11165 at 11:19:19.119
+starting worker pid=7948 on localhost:11165 at 11:19:19.363
+starting worker pid=6552 on localhost:11165 at 11:19:19.613
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+starting worker pid=8080 on localhost:11803 at 11:27:25.715
+starting worker pid=1768 on localhost:11803 at 11:27:25.972
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+starting worker pid=9244 on localhost:11803 at 11:28:19.275
+starting worker pid=2036 on localhost:11803 at 11:28:19.536
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+starting worker pid=616 on localhost:11803 at 11:30:11.224
+starting worker pid=5676 on localhost:11803 at 11:30:11.473
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted
+starting worker pid=8892 on localhost:11803 at 11:36:55.681
+starting worker pid=1472 on localhost:11803 at 11:36:55.926
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+
+This is MALDIquant version 1.19.3
+Quantitative Analysis of Mass Spectrometry Data
+ See '?MALDIquant' for more information about this package.
+
+Error in unserialize(node$con) : error reading from connection
+Calls: <Anonymous> ... doTryCatch -> recvData -> recvData.SOCKnode -> unserialize
+Execution halted

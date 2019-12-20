@@ -188,11 +188,15 @@ saveRDS(peak_data,
 
 
 numCores <- parallel::detectCores()
-numCores <- parallel::makeCluster(numCores) 
+numCores <- parallel::makeCluster(numCores,useXDR =F) 
 
-pp <- parallel::parLapply(numCores, 1:2, 
+
+
+ 
+pp <- parallel::parLapply(numCores, seq(1,999)[which(!1:999 %in% as.integer(tools::file_path_sans_ext(list.files(here::here("localonly",
+                                                                                                                            "par")))))], 
                           function(i) {
-                            set.seed(i)
+                            
                             peak_data <- readRDS(here::here("localonly",
                                                             "peak_data.rds"))
                             comb <-  expand.grid(1:12, 1:4)
@@ -204,6 +208,7 @@ pp <- parallel::parLapply(numCores, 1:2,
                                                        tech_rep) {
                               lapply(sample_names, 
                                      function(name){
+                                       set.seed(i)
                                        y <-  peak_data[grep(name, names(peak_data))][sample(1:12, bio_rep)]
                                        y <- lapply(y, function(y) y[sample(1:4, tech_rep)])
                                        y
@@ -251,53 +256,61 @@ pp <- parallel::parLapply(numCores, 1:2,
                             }
                             
                             
-                            mapply(function(x,
-                                            y){
-                              
-                              z <- get_replicates(peak_data = peak_data,
-                                                  sample_names = c("172-6", "A019", "A046", "B004"),
-                                                  bio_rep = 6 ,
-                                                  tech_rep = 3)
-                              
-                              
-                              
-                              z <- merge_tech_replicates(z, 
-                                                         filter = NULL)
-                              
-                              
-                              
-                              
-                              zz <- lapply(z, function(x){
-                                
-                                b <- IDBacApp::createFuzzyVector(massStart = 3000,
-                                                                 massEnd = 16000, 
-                                                                 ppm = 500, 
-                                                                 massList = lapply(unlist(x), function(x)x@mass), 
-                                                                 intensityList = lapply(unlist(x), function(x)x@intensity))
-                                b <- 1 - coop::cosine(b)
-                                list(strain = strsplit(names(x)[[1]], "_")[[1]][[1]],
-                                     distance = b,
-                                     vect = b[lower.tri(b)])
-                              })
-                              
-                               zz2 <- merge_bio_replicates(z)
-                                
-                                zz2 <- IDBacApp::createFuzzyVector(massStart = 3000,
-                                                                 massEnd = 16000, 
-                                                                 ppm = 500, 
-                                                                 massList = lapply(zz2, function(x)x@mass), 
-                                                                 intensityList = lapply(zz2, function(x)x@intensity))
-                                b <- 1 - coop::cosine(zz2)
-                                
-                              
-                              
-                              list(intra = zz,
-                                   inter =  b)
-                              
-                              
-                            },
-                            x= comb$Var1,
-                            y = comb$Var2, SIMPLIFY = T)
+                            results<- lapply(1:48,
+                                             function(x){
+                                               
+                                               x <- comb$Var1[[x]]
+                                               y = comb$Var2[[x]]
+                                               
+                                               
+                                               z <- get_replicates(peak_data = peak_data,
+                                                                   sample_names = c("172-6", "A019", "A046", "B004"),
+                                                                   bio_rep = x ,
+                                                                   tech_rep = y)
+                                               
+                                               
+                                               
+                                               z <- merge_tech_replicates(z, 
+                                                                          filter = NULL)
+                                               
+                                               
+                                               
+                                               
+                                               
+                                               zz <- lapply(z, function(x){
+                                                 
+                                                 b <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                                                                  massEnd = 16000, 
+                                                                                  ppm = 500, 
+                                                                                  massList = lapply(unlist(x), function(x)x@mass), 
+                                                                                  intensityList = lapply(unlist(x), function(x)x@intensity))
+                                                 b <- 1 - coop::cosine(b)
+                                                 list(strain = strsplit(names(x)[[1]], "_")[[1]][[1]],
+                                                      distance = b,
+                                                      vect = b[lower.tri(b)])
+                                               })
+                                               
+                                               zz2 <- merge_bio_replicates(z)
+                                               
+                                               zz2 <- IDBacApp::createFuzzyVector(massStart = 3000,
+                                                                                  massEnd = 16000, 
+                                                                                  ppm = 500, 
+                                                                                  massList = lapply(zz2, function(x)x@mass), 
+                                                                                  intensityList = lapply(zz2, function(x)x@intensity))
+                                               b <- 1 - coop::cosine(zz2)
+                                               
+                                               
+                                               list(intra = zz,
+                                                    inter =  b)
+                                               
+                                               
+                                             })
+                            
+                            
+                            saveRDS(results,
+                                    here::here("localonly",
+                                               "par",
+                                               paste0(i, ".rds")))
                           })
 
 parallel::stopCluster(numCores)
@@ -310,8 +323,8 @@ parallel::stopCluster(numCores)
 ii<-1
 
 yo <- do.call(rbind, lapply(seq_along(pp[[1]][ii,]), function(x) cbind.data.frame(pp[[1]][ii,][[x]]$vect,
-                                      pp[[1]][ii,][[x]]$strain,
-                                      x)))
+                                                                                  pp[[1]][ii,][[x]]$strain,
+                                                                                  x)))
 colnames(yo) <- c("cosine", "strain", "iter")
 
 yo <- cbind(yo, comb[match(yo$iter, rownames(comb)), ])
@@ -325,9 +338,9 @@ colnames(yo) <- c("cosine", "strain", "iter", "bio", "tech")
 
 ```{r}
 ggplot(yo) + 
-    geom_violin(aes(y=cosine, x=factor(tech))) + 
-    facet_wrap(~bio, ncol = 12) + 
-    coord_cartesian(ylim = c(0,1))
+  geom_violin(aes(y=cosine, x=factor(tech))) + 
+  facet_wrap(~bio, ncol = 12) + 
+  coord_cartesian(ylim = c(0,1))
 
 ```
 
@@ -344,10 +357,10 @@ a <-  lapply((pp, function(x){
   
   
   
-cbind(do.call(rbind,   lapply(1:2, function(x) cbind(pp[[x]][[i]]$vect, x))), i)
+  cbind(do.call(rbind,   lapply(1:2, function(x) cbind(pp[[x]][[i]]$vect, x))), i)
   
   
-  })
+})
 a <- do.call(rbind, a)
 
 colnames(a) <- c("cosine", "iter", "biorep")
